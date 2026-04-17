@@ -293,24 +293,26 @@ export default function DashboardClient() {
     return <div style={{ padding: 24 }}>Error: {loadError}</div>;
   }
 
-  const upcomingEmployeeEvent = getUpcomingEmployeeEvent(data.employees);
-  const billingCards = getBillingCards(data.billing);
+  const safeData = data as DataState;
 
-  const openTasks = data.tasks.filter((row) => {
-    const status = normalizeStatus(row.status || "");
-    return status !== "done";
-  });
+const upcomingEmployeeEvent = getUpcomingEmployeeEvent(safeData.employees);
+const billingCards = getBillingCards(safeData.billing);
 
-  const callBuckets = data.calls.reduce(
-    (acc, row) => {
-      const bucket = getCallBucket(row.status || "");
-      if (bucket === "new") acc.newCount += 1;
-      if (bucket === "inProgress") acc.inProgressCount += 1;
-      if (bucket === "scheduled") acc.scheduledCount += 1;
-      return acc;
-    },
-    { newCount: 0, inProgressCount: 0, scheduledCount: 0 }
-  );
+const openTasks = safeData.tasks.filter((row) => {
+  const status = normalizeStatus(row.status || "");
+  return status !== "done";
+});
+
+const callBuckets = safeData.calls.reduce(
+  (acc, row) => {
+    const bucket = getCallBucket(row.status || "");
+    if (bucket === "new") acc.newCount += 1;
+    if (bucket === "inProgress") acc.inProgressCount += 1;
+    if (bucket === "scheduled") acc.scheduledCount += 1;
+    return acc;
+  },
+  { newCount: 0, inProgressCount: 0, scheduledCount: 0 }
+);
 
   return (
     <>
