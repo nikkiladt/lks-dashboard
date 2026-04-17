@@ -462,9 +462,9 @@ const callBuckets = safeData.calls.reduce(
           </Panel>
 
           <Panel title="Capacity, Cancellations & Rescheduling" spanClass="span-6" minHeight={260}>
-            {data.capacity.length ? (
+            {safeData.capacity.length ? (
               <div style={{ width: "100%" }}>
-                {data.capacity.slice(0, 4).map((row, i) => (
+                {safeData.capacity.slice(0, 4).map((row, i) => (
                   <CompactRow
                     key={i}
                     title={row.therapist || "Unknown Therapist"}
@@ -484,9 +484,9 @@ const callBuckets = safeData.calls.reduce(
           </Panel>
 
           <Panel title="Recent & Pending Inquiries" spanClass="span-6" minHeight={340}>
-            {data.calls.length ? (
+            {safeData.calls.length ? (
               <div style={{ width: "100%" }}>
-                {data.calls.slice(0, 4).map((row, i) => {
+                {safeData.calls.slice(0, 4).map((row, i) => {
                   const colors = statusColor(row.status || "");
                   return (
                     <div
@@ -621,14 +621,14 @@ const callBuckets = safeData.calls.reduce(
                 </div>
               ) : null}
 
-              {data.employees.length ? (
+              {safeData.employees.length ? (
                 <div
                   style={{
                     display: "grid",
                     gap: 14,
                   }}
                 >
-                  {data.employees.map((row, i) => (
+                  {safeData.employees.map((row, i) => (
                     <div
                       key={i}
                       style={{
