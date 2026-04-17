@@ -32,19 +32,9 @@ export async function GET() {
   try {
     const session = (await auth()) as any;
 
-   if (!session) {
-  return NextResponse.json({ error: "No session" }, { status: 401 });
-}
-
-if (!(session as any).accessToken) {
-  return NextResponse.json(
-    {
-      error: "Session exists but no access token",
-      session,
-    },
-    { status: 401 }
-  );
-}
+    if (!session) {
+      return NextResponse.json({ error: "No session" }, { status: 401 });
+    }
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
     const clientId = process.env.AUTH_GOOGLE_ID;
@@ -57,17 +47,34 @@ if (!(session as any).accessToken) {
       );
     }
 
+    if (!session.refreshToken && !session.accessToken) {
+      return NextResponse.json(
+        {
+          error: "Session exists but no Google tokens",
+          session,
+        },
+        { status: 401 }
+      );
+    }
+
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
 
     oauth2Client.setCredentials({
-      access_token: (session as any).accessToken,
-refresh_token: (session as any).refreshToken,
-expiry_date: (session as any).expiresAt
-  ? (session as any).expiresAt * 1000
-  : undefined,
+      access_token: session.accessToken || undefined,
+      refresh_token: session.refreshToken || undefined,
+      expiry_date: session.expiresAt ? session.expiresAt * 1000 : undefined,
     });
 
-    await oauth2Client.getAccessToken();
+    const freshAccessToken = await oauth2Client.getAccessToken();
+
+    if (!freshAccessToken?.token && !session.accessToken) {
+      return NextResponse.json(
+        {
+          error: "Could not obtain Google access token",
+        },
+        { status: 401 }
+      );
+    }
 
     const [billing, capacity, employees, tasks, calls] = await Promise.all([
       getSheetData(oauth2Client, spreadsheetId, "Billing!A:Z"),
@@ -84,10 +91,14 @@ expiry_date: (session as any).expiresAt
       tasks: rowsToObjects(tasks),
       calls: rowsToObjects(calls),
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Dashboard API error:", error);
+    console.error("Dashboard API response data:", error?.response?.data);
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error?.message || "Unknown error",
+        details: error?.response?.data || null,
       },
       { status: 500 }
     );
