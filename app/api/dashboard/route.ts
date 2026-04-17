@@ -32,9 +32,19 @@ export async function GET() {
   try {
     const session = (await auth()) as any;
 
-    if (!session?.accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+   if (!session) {
+  return NextResponse.json({ error: "No session" }, { status: 401 });
+}
+
+if (!(session as any).accessToken) {
+  return NextResponse.json(
+    {
+      error: "Session exists but no access token",
+      session,
+    },
+    { status: 401 }
+  );
+}
 
     const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
     const clientId = process.env.AUTH_GOOGLE_ID;
@@ -50,9 +60,11 @@ export async function GET() {
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
 
     oauth2Client.setCredentials({
-      access_token: session.accessToken,
-      refresh_token: session.refreshToken,
-      expiry_date: session.expiresAt ? session.expiresAt * 1000 : undefined,
+      access_token: (session as any).accessToken,
+refresh_token: (session as any).refreshToken,
+expiry_date: (session as any).expiresAt
+  ? (session as any).expiresAt * 1000
+  : undefined,
     });
 
     await oauth2Client.getAccessToken();
