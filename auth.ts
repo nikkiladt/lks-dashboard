@@ -7,7 +7,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
   },
-  debug: true,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,
@@ -24,25 +23,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account }) {
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
-      }
-
-      if (account?.refresh_token) {
-        token.refreshToken = account.refresh_token;
-      }
-
-      if (account?.expires_at) {
-        token.expiresAt = account.expires_at;
+      if (account) {
+        return {
+          ...token,
+          accessToken: account.access_token ?? (token as any).accessToken,
+          refreshToken: account.refresh_token ?? (token as any).refreshToken,
+          expiresAt: account.expires_at ?? (token as any).expiresAt,
+        };
       }
 
       return token;
     },
     async session({ session, token }) {
-      (session as any).accessToken = token.accessToken;
-      (session as any).refreshToken = token.refreshToken;
-      (session as any).expiresAt = token.expiresAt;
-      return session;
+      return {
+        ...session,
+        accessToken: (token as any).accessToken,
+        refreshToken: (token as any).refreshToken,
+        expiresAt: (token as any).expiresAt,
+      } as any;
     },
   },
 });
