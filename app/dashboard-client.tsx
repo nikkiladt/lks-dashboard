@@ -339,6 +339,14 @@ const callBuckets = safeData.calls.reduce(
           box-shadow: 0 10px 30px rgba(15,23,42,0.06);
           min-width: 0;
         }
+.panel {
+  transition: all 0.2s ease;
+}
+
+.panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px rgba(15,23,42,0.08);
+}
 
         .span-3 { grid-column: span 3 / span 3; }
         .span-6 { grid-column: span 6 / span 6; }
@@ -406,23 +414,26 @@ const callBuckets = safeData.calls.reduce(
             <p style={{ marginTop: 6, color: "#64748b", fontSize: 16 }}>
               An overview of client inquiries, billing, tasks, and the team
             </p>
+<p style={{ marginTop: 4, color: "#94a3b8", fontSize: 13 }}>
+  Last updated: {new Date().toLocaleString()}
+</p>
           </div>
         </div>
 
         <div className="dashboard-grid">
-          <Panel title="Open Tasks & Assignments" spanClass="span-3" minHeight={160}>
+          <Panel title="Open Tasks" spanClass="span-3" minHeight={160}>
             <BigMetric value={String(openTasks.length)} />
           </Panel>
 
-          <Panel title="Recent & Pending Inquiries" spanClass="span-3" minHeight={160}>
+          <Panel title="Active Inquiries" spanClass="span-3" minHeight={160}>
             <BigMetric value={String(callBuckets.newCount + callBuckets.inProgressCount)} />
           </Panel>
 
-          <Panel title="New Inquiries" spanClass="span-3" minHeight={160}>
+          <Panel title="New Inquiries (MTD)" spanClass="span-3" minHeight={160}>
             <BigMetric value={String(callBuckets.newCount)} />
           </Panel>
 
-          <Panel title="Scheduled" spanClass="span-3" minHeight={160}>
+          <Panel title="Scheduled Assessments" spanClass="span-3" minHeight={160}>
             <BigMetric value={String(callBuckets.scheduledCount)} />
           </Panel>
 
@@ -580,7 +591,7 @@ const callBuckets = safeData.calls.reduce(
             )}
           </Panel>
 
-          <Panel title="Employees & Key Dates" spanClass="span-6" minHeight={340}>
+          <Panel title="Team & Milestones" spanClass="span-6" minHeight={340}>
             <div style={{ width: "100%" }}>
               {upcomingEmployeeEvent ? (
                 <div
@@ -734,7 +745,12 @@ function BigMetric({ value }: { value: string }) {
         fontSize: 52,
         fontWeight: 750,
         lineHeight: 1,
-        color: "#0f172a",
+        color:
+  Number(value) === 0
+    ? "#16a34a"
+    : Number(value) > 10
+    ? "#dc2626"
+    : "#0f172a",
         marginTop: 18,
       }}
     >
