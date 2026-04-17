@@ -1029,6 +1029,21 @@ export default function DashboardClient() {
                           </div>
                         ) : null}
                       </div>
+{row.license || row.npi ? (
+    <div
+      style={{
+        marginTop: 10,
+        fontSize: 13,
+        color: "#6b7280",
+        fontWeight: 500,
+      }}
+    >
+      {row.license ? <span>🪪 {row.license}</span> : null}
+      {row.license && row.npi ? <span> &nbsp;•&nbsp; </span> : null}
+      {row.npi ? <span>🆔 {row.npi}</span> : null}
+    </div>
+  ) : null}
+
                     </div>
                   ))}
                 </div>
