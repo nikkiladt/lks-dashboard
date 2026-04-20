@@ -10,6 +10,9 @@ type DataState = {
   employees: Row[];
   tasks: Row[];
   calls: Row[];
+  dailyProductivity: Row[];
+  monthlyProductivity: Row[];
+  expenses: Row[];
 };
 
 function looksLikeMoney(label: string, value: string) {
@@ -134,13 +137,11 @@ function isCurrentMonth(dateString: string) {
 }
 
 function isScheduledAssessment(status: string) {
-  const s = normalizeStatus(status);
-  return s.includes("assessment scheduled");
+  return normalizeStatus(status).includes("assessment scheduled");
 }
 
 function isCompletedAssessment(status: string) {
-  const s = normalizeStatus(status);
-  return s.includes("assessment completed");
+  return normalizeStatus(status).includes("assessment completed");
 }
 
 function getBillingCards(billingRows: Row[]) {
@@ -261,6 +262,68 @@ function isTaskOpen(status: string) {
   return !s.includes("done") && !s.includes("complete") && !s.includes("completed");
 }
 
+function parseNumber(value: string) {
+  if (!value) return 0;
+  const cleaned = String(value).replace(/[^0-9.-]/g, "");
+  const num = Number(cleaned);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+function sumCharges(rows: Row[]) {
+  return rows.reduce((sum, row) => sum + parseNumber(row.charges || ""), 0);
+}
+
+function sumVisits(rows: Row[]) {
+  return rows.reduce((sum, row) => sum + parseNumber(row.visits || ""), 0);
+}
+
+function sumDurations(rows: Row[]) {
+  const totalSeconds = rows.reduce((sum, row) => {
+    const value = row.duration || "";
+    const parts = value.split(":").map(Number);
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return sum;
+    const [hours, minutes, seconds] = parts;
+    return sum + hours * 3600 + minutes * 60 + seconds;
+  }, 0);
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function isProductivityDataRow(row: Row) {
+  const therapist = normalizeStatus(row.therapist || "");
+  return !!row.therapist && therapist !== "total" && !therapist.includes("--");
+}
+
+function sortProductivityRows(rows: Row[]) {
+  return [...rows].sort(
+    (a, b) => parseNumber(b.charges || "") - parseNumber(a.charges || "")
+  );
+}
+function isCurrentMonthExpense(dateString: string) {
+  return isCurrentMonth(dateString);
+}
+
+function isUpcomingExpense(row: Row) {
+  const status = normalizeStatus(row.status || "");
+  return status === "upcoming";
+}
+
+function sumExpensesMTD(rows: Row[]) {
+  return rows
+    .filter((row) => isCurrentMonthExpense(row.due_date || ""))
+    .reduce((sum, row) => sum + parseNumber(row.amount || ""), 0);
+}
+
+function sortExpensesByDate(rows: Row[]) {
+  return [...rows].sort((a, b) => {
+    const aDate = parseMonthDayYear(a.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bDate = parseMonthDayYear(b.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
+    return aDate - bDate;
+  });
+}
+
 export default function DashboardClient() {
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -339,6 +402,32 @@ export default function DashboardClient() {
   const lastMonthCollected =
     billingCards.find((card) => normalizeStatus(card.label).includes("last month"))?.value || "—";
 
+const expensesMTD = sumExpensesMTD(safeData.expenses || []);
+const netMTD = parseNumber(String(collectedMTD)) - expensesMTD;
+
+const upcomingExpenses = sortExpensesByDate(
+  (safeData.expenses || []).filter(isUpcomingExpense)
+).slice(0, 5);
+
+ const dailyRows = sortProductivityRows(
+  safeData.dailyProductivity.filter(isProductivityDataRow)
+);
+
+const monthlyRows = sortProductivityRows(
+  safeData.monthlyProductivity.filter(isProductivityDataRow)
+);
+
+const dailyTotals = {
+  charges: sumCharges(dailyRows),
+  visits: sumVisits(dailyRows),
+  duration: sumDurations(dailyRows),
+};
+
+const monthlyTotals = {
+  charges: sumCharges(monthlyRows),
+  visits: sumVisits(monthlyRows),
+  duration: sumDurations(monthlyRows),
+};
   return (
     <>
       <style>{`
@@ -404,12 +493,10 @@ export default function DashboardClient() {
         }
 
         .kpi-card {
-          padding: 18px 20px;
-          min-height: 120px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-        }
+  padding: 14px 16px;
+  min-height: auto;
+  border-radius: 18px;
+}
 
         .section-card {
           padding: 22px;
@@ -446,12 +533,9 @@ export default function DashboardClient() {
         }
 
         .kpi-value {
-          font-size: 44px;
-          line-height: 1;
-          font-weight: 800;
-          margin-top: 16px;
-          color: #111827;
-        }
+  font-size: 28px;
+  margin-top: 8px;
+}
 
         .kpi-value.red {
           color: #b91c1c;
@@ -590,7 +674,7 @@ export default function DashboardClient() {
         .billing-hero {
           padding: 18px;
           border-radius: 20px;
-          background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+          background: linear-gradient(135deg, #111827 0%, #000000 100%);
           color: #ffffff;
         }
 
@@ -701,6 +785,105 @@ export default function DashboardClient() {
           font-style: italic;
         }
 
+.productivity-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.productivity-stat {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #fcfcfd;
+  border: 1px solid #eceff3;
+}
+
+.productivity-stat-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.productivity-stat-value {
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 900;
+  color: #111827;
+}
+
+.productivity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.productivity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(88px, 110px));
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid #eceff3;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.productivity-person {
+  min-width: 0;
+}
+
+.productivity-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.productivity-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.productivity-metric {
+  text-align: right;
+}
+
+.productivity-metric-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.productivity-metric-value {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #111827;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .productivity-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .productivity-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .productivity-metric {
+    text-align: left;
+        
+        }
+
         .lower-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -714,6 +897,21 @@ export default function DashboardClient() {
 
           .kpi-row {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 900px) {
+          .productivity-summary {
+            grid-template-columns: 1fr;
+          }
+
+          .productivity-row {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+
+          .productivity-metric {
+            text-align: left;
           }
         }
 
@@ -771,12 +969,22 @@ export default function DashboardClient() {
           </div>
         </div>
 
-        <div className="kpi-row" style={{ marginBottom: 22 }}>
-          <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
-          <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
-          <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
-          <KpiCard label="Collected (MTD)" value={String(collectedMTD)} accent="red" isMoney />
-        </div>
+       <div className="kpi-row" style={{ marginBottom: 22, gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+  <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
+  <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
+  <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
+  <KpiCard label="Revenue (MTD)" value={String(collectedMTD)} accent="red" isMoney />
+  <KpiCard
+    label="Net (MTD)"
+    value={new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(netMTD)}
+    accent={netMTD >= 0 ? "green" : "red"}
+    isMoney
+  />
+</div>
 
         <div className="dashboard-grid">
           <div className="left-column">
@@ -872,20 +1080,150 @@ export default function DashboardClient() {
                 <div className="section-heading">
                   <div>
                     <h2 className="section-title">Daily Productivity</h2>
-                    <p className="section-subtitle">Phase 2 integration</p>
+                    <p className="section-subtitle">Today’s therapist totals</p>
                   </div>
                 </div>
-                <div className="soft-note">Data integration in progress.</div>
+
+               {dailyRows.length ? (
+  <>
+    <div className="productivity-summary">
+      <div className="productivity-stat">
+        <div className="productivity-stat-label">Charges</div>
+        <div className="productivity-stat-value">
+          {new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 0,
+          }).format(dailyTotals.charges)}
+        </div>
+      </div>
+
+      <div className="productivity-stat">
+        <div className="productivity-stat-label">Visits</div>
+        <div className="productivity-stat-value">{dailyTotals.visits}</div>
+      </div>
+
+      <div className="productivity-stat">
+        <div className="productivity-stat-label">Duration</div>
+        <div className="productivity-stat-value">{dailyTotals.duration}</div>
+      </div>
+    </div>
+
+    <div className="productivity-list">
+      {dailyRows.map((row, i) => (
+        <div key={i} className="productivity-row">
+          <div className="productivity-person">
+            <div className="productivity-name">
+              {row.therapist || "Unknown Therapist"}
+            </div>
+            <div className="productivity-meta">
+              {[row.service, row.location].filter(Boolean).join(" • ")}
+            </div>
+          </div>
+
+          <div className="productivity-metric">
+            <div className="productivity-metric-label">Duration</div>
+            <div className="productivity-metric-value">{row.duration || "—"}</div>
+          </div>
+
+          <div className="productivity-metric">
+            <div className="productivity-metric-label">Charges</div>
+            <div className="productivity-metric-value">
+              {row.charges
+                ? new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 0,
+                  }).format(parseNumber(row.charges))
+                : "—"}
+            </div>
+          </div>
+
+          <div className="productivity-metric">
+            <div className="productivity-metric-label">Visits</div>
+            <div className="productivity-metric-value">{row.visits || "—"}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </>
+) : (
+  <div className="soft-note">No daily productivity data found.</div>
+)}
               </section>
 
               <section className="card section-card">
                 <div className="section-heading">
                   <div>
                     <h2 className="section-title">Monthly Productivity</h2>
-                    <p className="section-subtitle">Phase 2 integration</p>
+                    <p className="section-subtitle">Month-to-date therapist totals</p>
                   </div>
                 </div>
-                <div className="soft-note">Data integration in progress.</div>
+
+                {monthlyRows.length ? (
+                  <>
+                    <div className="productivity-summary">
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Charges</div>
+                        <div className="productivity-stat-value">
+                          {new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          }).format(monthlyTotals.charges)}
+                        </div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Visits</div>
+                        <div className="productivity-stat-value">{monthlyTotals.visits}</div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Duration</div>
+                        <div className="productivity-stat-value">{monthlyTotals.duration}</div>
+                      </div>
+                    </div>
+
+                    <div className="productivity-list">
+                      {monthlyRows.map((row, i) => (
+                        <div key={i} className="productivity-row">
+                          <div className="productivity-person">
+                            <div className="productivity-name">
+                              {row.therapist || "Unknown Therapist"}
+                            </div>
+                            <div className="productivity-meta">
+                              {[row.service, row.location].filter(Boolean).join(" • ")}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Duration</div>
+                            <div className="productivity-metric-value">
+                              {row.duration || "—"}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Charges</div>
+                            <div className="productivity-metric-value">
+                              {row.charges ? formatValue("charges", row.charges) : "—"}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Visits</div>
+                            <div className="productivity-metric-value">
+                              {row.visits || "—"}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="soft-note">No monthly productivity data found.</div>
+                )}
               </section>
 
               <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
@@ -895,6 +1233,7 @@ export default function DashboardClient() {
                     <p className="section-subtitle">Scheduling and therapist availability</p>
                   </div>
                 </div>
+
                 {safeData.capacity.length ? (
                   <div className="employee-list">
                     {safeData.capacity.slice(0, 4).map((row, i) => (
@@ -950,36 +1289,128 @@ export default function DashboardClient() {
             </section>
 
             <section className="card section-card">
-              <div className="section-heading">
+  <div className="section-heading">
+    <div>
+      <h2 className="section-title">Financial Snapshot</h2>
+      <p className="section-subtitle">
+        Month-to-date collections, expenses, and upcoming obligations
+      </p>
+    </div>
+  </div>
+
+  <div className="billing-stack">
+    <div className="billing-hero">
+      <div className="billing-hero-label">Net (MTD)</div>
+      <div className="billing-hero-value">
+        {new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 0,
+        }).format(netMTD)}
+      </div>
+    </div>
+
+    <div className="billing-secondary">
+      <div className="billing-item">
+        <div className="billing-item-label">Collected (MTD)</div>
+        <div className="billing-item-value">{collectedMTD}</div>
+      </div>
+
+      <div className="billing-item">
+        <div className="billing-item-label">Expenses (MTD)</div>
+        <div className="billing-item-value">
+          {new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 0,
+          }).format(expensesMTD)}
+        </div>
+      </div>
+
+      <div className="billing-item">
+        <div className="billing-item-label">Projected Month Total</div>
+        <div className="billing-item-value">
+          {billingCards.find((card) =>
+            normalizeStatus(card.label).includes("projected month total")
+          )?.value || "—"}
+        </div>
+      </div>
+
+      <div className="billing-item">
+        <div className="billing-item-label">Last Month (Collected)</div>
+        <div className="billing-item-value">{lastMonthCollected}</div>
+      </div>
+    </div>
+
+    <div className="billing-item" style={{ background: "#fafafa" }}>
+      <div className="billing-item-label" style={{ marginBottom: 10 }}>
+        Upcoming Expenses
+      </div>
+
+      {upcomingExpenses.length ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          {upcomingExpenses.map((row, i) => {
+            const dueDate = parseMonthDayYear(row.due_date || "");
+            const isSoon =
+              dueDate &&
+              dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
+
+            return (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                  borderBottom:
+                    i !== upcomingExpenses.length - 1
+                      ? "1px solid #e5e7eb"
+                      : "none",
+                  paddingBottom:
+                    i !== upcomingExpenses.length - 1 ? 10 : 0,
+                }}
+              >
                 <div>
-                  <h2 className="section-title">Billing Snapshot</h2>
-                  <p className="section-subtitle">Month-to-date financial view</p>
+                  <div style={{ fontWeight: 700, color: "#111827" }}>
+                    {row.expense_name || "Expense"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#6b7280",
+                      marginTop: 2,
+                    }}
+                  >
+                    {[row.category, row.due_date].filter(Boolean).join(" • ")}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: isSoon ? "#b91c1c" : "#991b1b",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {row.amount
+                    ? new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      }).format(parseNumber(row.amount))
+                    : "—"}
                 </div>
               </div>
-
-              <div className="billing-stack">
-                <div className="billing-hero">
-                  <div className="billing-hero-label">Collected (MTD)</div>
-                  <div className="billing-hero-value">{collectedMTD}</div>
-                </div>
-
-                <div className="billing-secondary">
-                  {billingCards
-                    .filter((card) => !normalizeStatus(card.label).includes("collected (mtd)"))
-                    .map((card, i) => (
-                      <div key={i} className="billing-item">
-                        <div className="billing-item-label">{card.label}</div>
-                        <div className="billing-item-value">{card.value}</div>
-                      </div>
-                    ))}
-                </div>
-
-                <div className="billing-item" style={{ background: "#fafafa" }}>
-                  <div className="billing-item-label">Reference Point</div>
-                  <div className="billing-item-value">{lastMonthCollected}</div>
-                </div>
-              </div>
-            </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="soft-note">No upcoming expenses listed.</div>
+      )}
+    </div>
+  </div>
+</section>
 
             <section className="card section-card">
               <div className="section-heading">
@@ -1029,21 +1460,21 @@ export default function DashboardClient() {
                           </div>
                         ) : null}
                       </div>
-{row.license || row.npi ? (
-    <div
-      style={{
-        marginTop: 10,
-        fontSize: 13,
-        color: "#6b7280",
-        fontWeight: 500,
-      }}
-    >
-      {row.license ? <span>🪪 {row.license}</span> : null}
-      {row.license && row.npi ? <span> &nbsp;•&nbsp; </span> : null}
-      {row.npi ? <span>🆔 {row.npi}</span> : null}
-    </div>
-  ) : null}
 
+                      {row.license || row.npi ? (
+                        <div
+                          style={{
+                            marginTop: 10,
+                            fontSize: 13,
+                            color: "#6b7280",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {row.license ? <span>🪪 {row.license}</span> : null}
+                          {row.license && row.npi ? <span> &nbsp;•&nbsp; </span> : null}
+                          {row.npi ? <span>🆔 {row.npi}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

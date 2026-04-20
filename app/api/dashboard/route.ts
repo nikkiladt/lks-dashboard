@@ -2,8 +2,8 @@ import { auth } from "@/auth";
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
 
-function rowsToObjects(rows: string[][]) {
-  if (!rows.length) return [];
+function rowsToObjects(rows: string[][] | undefined) {
+  if (!rows || !rows.length) return [];
   const [headers, ...data] = rows;
   return data.map((row) =>
     Object.fromEntries(headers.map((header, i) => [header, row[i] ?? ""]))
@@ -65,32 +65,38 @@ export async function GET() {
       expiry_date: session.expiresAt ? session.expiresAt * 1000 : undefined,
     });
 
-    const freshAccessToken = await oauth2Client.getAccessToken();
+    await oauth2Client.getAccessToken();
 
-    if (!freshAccessToken?.token && !session.accessToken) {
-      return NextResponse.json(
-        {
-          error: "Could not obtain Google access token",
-        },
-        { status: 401 }
-      );
-    }
+    const [
+  billing,
+  capacity,
+  employees,
+  tasks,
+  calls,
+  dailyProductivity,
+  monthlyProductivity,
+  expenses,
+] = await Promise.all([
+  getSheetData(oauth2Client, spreadsheetId, "Billing!A:Z"),
+  getSheetData(oauth2Client, spreadsheetId, "Capacity!A:Z"),
+  getSheetData(oauth2Client, spreadsheetId, "Employees!A:Z"),
+  getSheetData(oauth2Client, spreadsheetId, "Tasks!A:Z"),
+  getSheetData(oauth2Client, spreadsheetId, "Calls!A:Z"),
+  getSheetData(oauth2Client, spreadsheetId, "daily_productivity!A:F"),
+  getSheetData(oauth2Client, spreadsheetId, "monthly_productivity!A:F"),
+  getSheetData(oauth2Client, spreadsheetId, "Expenses!A:Z"),
+]);
 
-    const [billing, capacity, employees, tasks, calls] = await Promise.all([
-      getSheetData(oauth2Client, spreadsheetId, "Billing!A:Z"),
-      getSheetData(oauth2Client, spreadsheetId, "Capacity!A:Z"),
-      getSheetData(oauth2Client, spreadsheetId, "Employees!A:Z"),
-      getSheetData(oauth2Client, spreadsheetId, "Tasks!A:Z"),
-      getSheetData(oauth2Client, spreadsheetId, "Calls!A:Z"),
-    ]);
-
-    return NextResponse.json({
-      billing: rowsToObjects(billing),
-      capacity: rowsToObjects(capacity),
-      employees: rowsToObjects(employees),
-      tasks: rowsToObjects(tasks),
-      calls: rowsToObjects(calls),
-    });
+  return NextResponse.json({
+  billing: rowsToObjects(billing),
+  capacity: rowsToObjects(capacity),
+  employees: rowsToObjects(employees),
+  tasks: rowsToObjects(tasks),
+  calls: rowsToObjects(calls),
+  dailyProductivity: rowsToObjects(dailyProductivity),
+  monthlyProductivity: rowsToObjects(monthlyProductivity),
+  expenses: rowsToObjects(expenses),
+});
   } catch (error: any) {
     console.error("Dashboard API error:", error);
     console.error("Dashboard API response data:", error?.response?.data);
