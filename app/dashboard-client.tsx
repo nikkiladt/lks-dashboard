@@ -341,7 +341,29 @@ function formatYearsLabel(years: number | null) {
   if (years === null) return "";
   return `${years} year${years === 1 ? "" : "s"}`;
 }
+function getUpcomingAnniversaryYears(dateString: string) {
+  if (!dateString) return null;
 
+  const start = new Date(dateString);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const now = new Date();
+
+  let years = now.getFullYear() - start.getFullYear();
+
+  const thisYearAnniversary = new Date(
+    now.getFullYear(),
+    start.getMonth(),
+    start.getDate()
+  );
+
+  // If anniversary already passed this year → next one is +1
+  if (thisYearAnniversary < now) {
+    years += 1;
+  }
+
+  return years;
+}
 export default function DashboardClient() {
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -1011,7 +1033,7 @@ const monthlyTotals = {
             </h1>
 
             <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
-              An overview of client inquiries, billing, tasks, and the team
+              An overview of client inquiries, billing, tasks, and team
             </p>
 
             <p style={{ marginTop: 10, color: "#9ca3af", fontSize: 14, fontWeight: 600 }}>
@@ -1484,8 +1506,12 @@ const monthlyTotals = {
       </div>
       <div className="milestone-feature-event">
         {upcomingEmployeeEvent.type === "birthday"
-          ? `🧁 Birthday — ${upcomingEmployeeEvent.label}`
-          : `🎉 ${upcomingEmployeeEvent.years ?? 0}y Anniversary — ${upcomingEmployeeEvent.label}`}
+  ? `🧁 Birthday — ${upcomingEmployeeEvent.label}`
+  : `🎉 ${getUpcomingAnniversaryYears(
+      safeData.employees.find(
+        (e) => e.employee === upcomingEmployeeEvent.employee
+      )?.work_anniversary || ""
+    )} Year Anniversary — ${upcomingEmployeeEvent.label}`}
       </div>
     </div>
   )}
