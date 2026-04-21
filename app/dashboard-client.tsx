@@ -324,6 +324,24 @@ function sortExpensesByDate(rows: Row[]) {
   });
 }
 
+function formatAnniversaryFull(dateString: string) {
+  if (!dateString) return "";
+
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return dateString;
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatYearsLabel(years: number | null) {
+  if (years === null) return "";
+  return `${years} year${years === 1 ? "" : "s"}`;
+}
+
 export default function DashboardClient() {
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -753,31 +771,33 @@ const monthlyTotals = {
           font-weight: 700;
         }
 
-        .employee-card {
-          padding: 16px 18px;
-          border: 1px solid #e5e7eb;
-          border-radius: 20px;
-          background: #ffffff;
-        }
+     .employee-card {
+  padding: 18px 18px 16px;
+  border: 1px solid #eceff3;
+  border-radius: 22px;
+  background: #ffffff;
+}
 
         .employee-name {
-          font-size: 18px;
-          font-weight: 800;
-          color: #111827;
-        }
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.2;
+}
 
         .employee-role {
-          margin-top: 4px;
-          font-size: 14px;
-          color: #6b7280;
-        }
+  margin-top: 8px;
+  font-size: 16px;
+  color: #6b7280;
+  font-weight: 500;
+}
 
         .employee-tags {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 12px;
-        }
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
 
         .soft-note {
           color: #9ca3af;
@@ -901,42 +921,73 @@ const monthlyTotals = {
         }
 
         @media (max-width: 900px) {
-          .productivity-summary {
-            grid-template-columns: 1fr;
-          }
+  .productivity-summary {
+    grid-template-columns: 1fr;
+  }
 
-          .productivity-row {
-            grid-template-columns: 1fr;
-            gap: 10px;
-          }
+  .productivity-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
 
-          .productivity-metric {
-            text-align: left;
-          }
-        }
+  .productivity-metric {
+    text-align: left;
+  }
+}
 
-        @media (max-width: 760px) {
-          .dashboard-shell {
-            padding: 18px;
-          }
+.lower-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
 
-          .dashboard-header {
-            align-items: flex-start;
-          }
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
 
-          .kpi-row,
-          .lower-grid {
-            grid-template-columns: 1fr;
-          }
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
-          .inquiry-grid {
-            grid-template-columns: 1fr;
-          }
+@media (max-width: 900px) {
+  .productivity-summary {
+    grid-template-columns: 1fr;
+  }
 
-          .inquiry-name {
-            font-size: 24px;
-          }
-        }
+  .productivity-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .productivity-metric {
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell {
+    padding: 18px;
+  }
+
+  .dashboard-header {
+    align-items: flex-start;
+  }
+
+  .kpi-row,
+  .lower-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inquiry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inquiry-name {
+    font-size: 24px;
+  }
+}
       `}</style>
 
       <div className="dashboard-shell">
@@ -1413,75 +1464,117 @@ const monthlyTotals = {
 </section>
 
             <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Team & Milestones</h2>
-                  <p className="section-subtitle">Upcoming celebrations and key dates</p>
+  <div className="section-heading">
+    <div>
+      <h2 className="section-title">Team & Milestones</h2>
+      <p className="section-subtitle">
+        Upcoming celebrations and key dates
+      </p>
+    </div>
+  </div>
+
+  {upcomingEmployeeEvent && (
+    <div className="milestone-feature">
+      <div className="milestone-feature-label">Upcoming</div>
+      <div className="milestone-feature-name">
+        {upcomingEmployeeEvent.employee}
+      </div>
+      <div className="milestone-feature-role">
+        {upcomingEmployeeEvent.role}
+      </div>
+      <div className="milestone-feature-event">
+        {upcomingEmployeeEvent.type === "birthday"
+          ? `🧁 Birthday — ${upcomingEmployeeEvent.label}`
+          : `🎉 ${upcomingEmployeeEvent.years ?? 0}y Anniversary — ${upcomingEmployeeEvent.label}`}
+      </div>
+    </div>
+  )}
+
+  {safeData.employees.length ? (
+    <div className="employee-list">
+      {safeData.employees.map((row, i) => {
+        const years = getWorkAnniversaryYears(row.work_anniversary);
+
+        return (
+          <div key={i} className="employee-card">
+            <div className="employee-name">
+              {row.employee || "Unknown Employee"}
+            </div>
+
+            <div className="employee-role">
+              {row.role || ""}
+            </div>
+
+            <div className="employee-tags">
+              {row.birthday && (
+                <div
+                  className="tag"
+                  style={{
+                    background: "#e9a9bf",
+                    color: "#fff",
+                    padding: "10px 16px",
+                    borderRadius: 999,
+                    fontSize: 15,
+                    fontWeight: 700,
+                  }}
+                >
+                  🧁 {formatMonthDayOnly(row.birthday)}
                 </div>
-              </div>
-
-              {upcomingEmployeeEvent ? (
-                <div className="milestone-feature">
-                  <div className="milestone-feature-label">Upcoming</div>
-                  <div className="milestone-feature-name">{upcomingEmployeeEvent.employee}</div>
-                  <div className="milestone-feature-role">{upcomingEmployeeEvent.role}</div>
-                  <div className="milestone-feature-event">
-                    {upcomingEmployeeEvent.type === "birthday"
-                      ? `🧁 Birthday — ${upcomingEmployeeEvent.label}`
-                      : `🎉 ${upcomingEmployeeEvent.years ?? 0}y Anniversary — ${upcomingEmployeeEvent.label}`}
-                  </div>
-                </div>
-              ) : null}
-
-              {safeData.employees.length ? (
-                <div className="employee-list">
-                  {safeData.employees.map((row, i) => (
-                    <div key={i} className="employee-card">
-                      <div className="employee-name">{row.employee || "Unknown Employee"}</div>
-                      <div className="employee-role">{row.role || ""}</div>
-
-                      <div className="employee-tags">
-                        {row.birthday ? (
-                          <div
-                            className="tag"
-                            style={{ background: "#fff7ed", color: "#9a3412" }}
-                          >
-                            🧁 {formatMonthDayOnly(row.birthday)}
-                          </div>
-                        ) : null}
-
-                        {row.work_anniversary ? (
-                          <div
-                            className="tag"
-                            style={{ background: "#fef2f2", color: "#991b1b" }}
-                          >
-                            🎉 {getWorkAnniversaryYears(row.work_anniversary)}y —{" "}
-                            {formatMonthDayOnly(row.work_anniversary)}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {row.license || row.npi ? (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            fontSize: 13,
-                            color: "#6b7280",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {row.license ? <span>🪪 {row.license}</span> : null}
-                          {row.license && row.npi ? <span> &nbsp;•&nbsp; </span> : null}
-                          {row.npi ? <span>🆔 {row.npi}</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="soft-note">No employee dates found.</div>
               )}
-            </section>
+
+              {row.work_anniversary && (
+                <div
+                  className="tag"
+                  style={{
+                    background: "#f4eded",
+                    color: "#111827",
+                    padding: "10px 16px",
+                    borderRadius: 999,
+                    fontSize: 15,
+                    fontWeight: 500,
+                  }}
+                >
+                  <span style={{ color: "#ef8cab", marginRight: 8 }}>
+                    🎉
+                  </span>
+                  {formatAnniversaryFull(row.work_anniversary)} —{" "}
+                  {formatYearsLabel(years)}
+                </div>
+              )}
+            </div>
+
+            {(row.license || row.npi) && (
+              <div
+                style={{
+                  marginTop: 16,
+                  fontSize: 15,
+                  color: "#111827",
+                  fontWeight: 500,
+                }}
+              >
+                {row.license && (
+                  <span>LICENSE: {row.license}</span>
+                )}
+
+                {row.license && row.npi && (
+                  <span style={{ color: "#e9a9bf", padding: "0 8px" }}>
+                    ●
+                  </span>
+                )}
+
+                {row.npi && <span>NPI: {row.npi}</span>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div className="soft-note">
+      No employee data found.
+    </div>
+  )}
+</section>
           </div>
         </div>
       </div>
