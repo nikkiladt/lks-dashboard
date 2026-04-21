@@ -1597,7 +1597,8 @@ const monthlyTotals = {
                 <div
                   className="tag"
                   style={{
-                    background: "#f4eded",
+                    background: "#f8fafc",
+border: ".5px solid #f1d5db",
                     color: "#111827",
                     padding: "10px 16px",
                     borderRadius: 999,
@@ -1628,9 +1629,7 @@ const monthlyTotals = {
                 )}
 
                 {row.license && row.npi && (
-                  <span style={{ color: "#e9a9bf", padding: "0 8px" }}>
-                    ●
-                  </span>
+                  <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
                 )}
 
                 {row.npi && <span>NPI: {row.npi}</span>}
