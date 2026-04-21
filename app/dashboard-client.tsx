@@ -191,7 +191,7 @@ function getNextOccurrence(value: string) {
   return next;
 }
 
-function getUpcomingEmployeeEvent(employees: Row[]) {
+function getUpcomingEmployeeEvents(employees: Row[], daysAhead = 45) {
   const events: {
     employee: string;
     role: string;
@@ -201,6 +201,12 @@ function getUpcomingEmployeeEvent(employees: Row[]) {
     timestamp: number;
   }[] = [];
 
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+
+  const maxTime = today.getTime() + daysAhead * 24 * 60 * 60 * 1000;
+
   employees.forEach((row) => {
     const employee = row.employee || "Unknown Employee";
     const role = row.role || "";
@@ -208,32 +214,38 @@ function getUpcomingEmployeeEvent(employees: Row[]) {
     if (row.birthday) {
       const next = getNextOccurrence(row.birthday);
       if (next) {
-        events.push({
-          employee,
-          role,
-          type: "birthday",
-          label: formatMonthDayOnly(row.birthday),
-          timestamp: next.getTime(),
-        });
+        const ts = next.getTime();
+        if (ts >= today.getTime() && ts <= maxTime) {
+          events.push({
+            employee,
+            role,
+            type: "birthday",
+            label: formatMonthDayOnly(row.birthday),
+            timestamp: ts,
+          });
+        }
       }
     }
 
     if (row.work_anniversary) {
       const next = getNextOccurrence(row.work_anniversary);
       if (next) {
-        events.push({
-          employee,
-          role,
-          type: "anniversary",
-          label: formatMonthDayOnly(row.work_anniversary),
-          years: getWorkAnniversaryYears(row.work_anniversary),
-          timestamp: next.getTime(),
-        });
+        const ts = next.getTime();
+        if (ts >= today.getTime() && ts <= maxTime) {
+          events.push({
+            employee,
+            role,
+            type: "anniversary",
+            label: formatMonthDayOnly(row.work_anniversary),
+            years: getUpcomingAnniversaryYears(row.work_anniversary),
+            timestamp: ts,
+          });
+        }
       }
     }
   });
 
-  return events.sort((a, b) => a.timestamp - b.timestamp)[0] || null;
+  return events.sort((a, b) => a.timestamp - b.timestamp);
 }
 
 function getWorkAnniversaryYears(dateString: string) {
@@ -401,7 +413,7 @@ export default function DashboardClient() {
 
   const safeData = data as DataState;
   const billingCards = getBillingCards(safeData.billing);
-  const upcomingEmployeeEvent = getUpcomingEmployeeEvent(safeData.employees);
+  const upcomingEmployeeEvents = getUpcomingEmployeeEvents(safeData.employees, 45);
 
   const openTasks = safeData.tasks.filter((row) => isTaskOpen(row.status || ""));
 
@@ -1495,27 +1507,60 @@ const monthlyTotals = {
     </div>
   </div>
 
-  {upcomingEmployeeEvent && (
-    <div className="milestone-feature">
-      <div className="milestone-feature-label">Upcoming</div>
-      <div className="milestone-feature-name">
-        {upcomingEmployeeEvent.employee}
-      </div>
-      <div className="milestone-feature-role">
-        {upcomingEmployeeEvent.role}
-      </div>
-      <div className="milestone-feature-event">
-        {upcomingEmployeeEvent.type === "birthday"
-  ? `🧁 Birthday — ${upcomingEmployeeEvent.label}`
-  : `🎉 ${getUpcomingAnniversaryYears(
-      safeData.employees.find(
-        (e) => e.employee === upcomingEmployeeEvent.employee
-      )?.work_anniversary || ""
-    )} Year Anniversary — ${upcomingEmployeeEvent.label}`}
-      </div>
-    </div>
-  )}
+  {upcomingEmployeeEvents.length ? (
+  <div className="milestone-feature">
+    <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
 
+    <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+      {upcomingEmployeeEvents.map((event, i) => (
+        <div
+          key={`${event.employee}-${event.type}-${i}`}
+          style={{
+            paddingBottom:
+              i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
+            borderBottom:
+              i !== upcomingEmployeeEvents.length - 1
+                ? "1px solid #e5e7eb"
+                : "none",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: "#f4ecea",
+            }}
+          >
+            {event.employee}
+          </div>
+
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: 14,
+              color: "#f59fb9",
+            }}
+          >
+            {event.role}
+          </div>
+
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 15,
+              fontWeight: 600,
+              color: "#f4ecea",
+            }}
+          >
+            {event.type === "birthday"
+              ? `🧁 Birthday — ${event.label}`
+              : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+) : null}
   {safeData.employees.length ? (
     <div className="employee-list">
       {safeData.employees.map((row, i) => {
