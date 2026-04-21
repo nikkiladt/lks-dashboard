@@ -1606,9 +1606,7 @@ border: ".5px solid #f1d5db",
                     fontWeight: 500,
                   }}
                 >
-                  <span style={{ color: "#ef8cab", marginRight: 8 }}>
-                    🎉
-                  </span>
+                  <span style={{ color: "#e9a9bf" }}>🎉</span>
                   {formatAnniversaryFull(row.work_anniversary)} —{" "}
                   {formatYearsLabel(years)}
                 </div>
