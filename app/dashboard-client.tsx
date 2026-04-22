@@ -376,6 +376,33 @@ function getUpcomingAnniversaryYears(dateString: string) {
 
   return years;
 }
+function getTaskState(row: Row) {
+  const raw = (
+    row.task_status ||
+    row.status ||
+    ""
+  ).toLowerCase().trim();
+
+  if (
+    raw.includes("complete") ||
+    raw.includes("completed") ||
+    raw === "done"
+  ) {
+    return "completed";
+  }
+
+  return "open";
+}
+
+function getTaskNote(row: Row) {
+  return row.status_note || row.status || "";
+}
+
+function formatTaskDue(value: string) {
+  if (!value) return "";
+  if (value.toLowerCase() === "complete") return "";
+  return value;
+}
 export default function DashboardClient() {
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -415,7 +442,10 @@ export default function DashboardClient() {
   const billingCards = getBillingCards(safeData.billing);
   const upcomingEmployeeEvents = getUpcomingEmployeeEvents(safeData.employees, 45);
 
-  const openTasks = safeData.tasks.filter((row) => isTaskOpen(row.status || ""));
+  const openTasks = safeData.tasks.filter((row) => getTaskState(row) === "open");
+const completedTasks = safeData.tasks.filter(
+  (row) => getTaskState(row) === "completed"
+);
 
   const callBuckets = safeData.calls.reduce(
     (acc, row) => {
@@ -483,7 +513,147 @@ const monthlyTotals = {
   return (
     <>
       <style>{`
-        .dashboard-shell {
+        
+.tasks-section-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.tasks-subsection {
+  display: grid;
+  gap: 12px;
+}
+
+.tasks-subheading {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.task-card-modern {
+  padding: 16px 18px;
+  border: 1px solid #eceff3;
+  border-radius: 18px;
+  background: #ffffff;
+  display: grid;
+  gap: 10px;
+}
+
+.task-card-modern.completed {
+  background: #fafafa;
+  border-color: #e5e7eb;
+}
+
+.task-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-title-modern {
+  font-size: 17px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.35;
+}
+
+.task-check {
+  font-size: 16px;
+  color: #15803d;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.task-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.task-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.task-chip.owner {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.task-chip.due {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.task-chip.complete {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.task-note {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b7280;
+  background: #faf7f2;
+  border: 1px solid #f3eadf;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.task-note.completed {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+  color: #64748b;
+}
+
+.completed-list {
+  display: grid;
+  gap: 10px;
+}
+
+.completed-task-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #eceff3;
+  border-radius: 16px;
+  background: #fcfcfd;
+}
+
+.completed-task-main {
+  display: grid;
+  gap: 6px;
+}
+
+.completed-task-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.completed-task-meta {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.completed-task-date {
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.dashboard-shell {
           padding: 28px;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           background: linear-gradient(180deg, #f8fafc 0%, #f3f4f6 100%);
@@ -1361,33 +1531,78 @@ const monthlyTotals = {
           </div>
 
           <div className="right-column">
-            <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Open Tasks</h2>
-                  <p className="section-subtitle">Current action items and owners</p>
+           <section className="card section-card">
+  <div className="section-heading">
+    <div>
+      <h2 className="section-title">Open Tasks</h2>
+      <p className="section-subtitle">Current action items and recent completions</p>
+    </div>
+  </div>
+
+  <div className="tasks-section-stack">
+    <div className="tasks-subsection">
+      <div className="tasks-subheading">Active Tasks</div>
+
+      {openTasks.length ? (
+        openTasks.map((row, i) => (
+          <div key={i} className="task-card-modern">
+            <div className="task-top-row">
+              <div className="task-title-modern">
+                {row.task || "Untitled task"}
+              </div>
+            </div>
+
+            <div className="task-meta-row">
+              {row.owner ? (
+                <span className="task-chip owner">Owner: {row.owner}</span>
+              ) : null}
+
+              {formatTaskDue(row.due || "") ? (
+                <span className="task-chip due">Due: {formatTaskDue(row.due || "")}</span>
+              ) : null}
+            </div>
+
+            {getTaskNote(row) ? (
+              <div className="task-note">{getTaskNote(row)}</div>
+            ) : null}
+          </div>
+        ))
+      ) : (
+        <div className="soft-note">No active tasks found.</div>
+      )}
+    </div>
+
+    <div className="tasks-subsection">
+      <div className="tasks-subheading">Recently Completed</div>
+
+      {completedTasks.length ? (
+        <div className="completed-list">
+          {completedTasks.slice(0, 4).map((row, i) => (
+            <div key={i} className="completed-task-row">
+              <div className="completed-task-main">
+                <div className="completed-task-title">
+                  ✓ {row.task || "Completed task"}
+                </div>
+
+                <div className="completed-task-meta">
+                  {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
+                    .filter(Boolean)
+                    .join(" • ")}
                 </div>
               </div>
 
-              {openTasks.length ? (
-                <div className="task-list">
-                  {openTasks.map((row, i) => (
-                    <div key={i} className="task-card">
-                      <div className="task-title">{row.task || "Untitled task"}</div>
-
-                      <div className="task-meta">
-                        {row.owner ? <span className="tag owner">Owner: {row.owner}</span> : null}
-                        {row.due ? <span className="tag due">Due: {row.due}</span> : null}
-                        {row.status ? <span className="tag status">{row.status}</span> : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="soft-note">No open tasks found.</div>
-              )}
-            </section>
-
+              <div className="completed-task-date">
+                {row.completed_date || "Completed"}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="soft-note">No completed tasks yet.</div>
+      )}
+    </div>
+  </div>
+</section>
             <section className="card section-card">
   <div className="section-heading">
     <div>
