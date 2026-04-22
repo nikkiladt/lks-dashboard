@@ -526,10 +526,11 @@ const monthlyTotals = {
         }
 
         .kpi-row {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 16px;
-        }
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
 
         .card {
           background: #ffffff;
@@ -545,9 +546,15 @@ const monthlyTotals = {
         }
 
         .kpi-card {
-  padding: 14px 16px;
-  min-height: auto;
-  border-radius: 18px;
+  padding: 12px 14px;
+  min-height: 92px;
+  border-radius: 16px;
+  background: #fcfcfd;
+  border: 1px solid #eceff3;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
         .section-card {
@@ -577,16 +584,19 @@ const monthlyTotals = {
         }
 
         .kpi-label {
-          font-size: 14px;
-          font-weight: 700;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
+  font-size: 11px;
+  font-weight: 800;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
 
-        .kpi-value {
-  font-size: 28px;
-  margin-top: 8px;
+.kpi-value {
+  font-size: clamp(22px, 2.4vw, 30px);
+  line-height: 1.05;
+  font-weight: 900;
+  margin-top: 6px;
 }
 
         .kpi-value.red {
@@ -979,16 +989,21 @@ const monthlyTotals = {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
-
-  .kpi-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 900px) {
   .productivity-summary {
     grid-template-columns: 1fr;
   }
+@media (max-width: 640px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card {
+    min-height: 84px;
+  }
+}
 
   .productivity-row {
     grid-template-columns: 1fr;
@@ -1054,7 +1069,7 @@ const monthlyTotals = {
           </div>
         </div>
 
-       <div className="kpi-row" style={{ marginBottom: 22, gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+       <div className="kpi-row">
   <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
   <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
   <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
