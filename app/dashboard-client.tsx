@@ -403,6 +403,25 @@ function formatTaskDue(value: string) {
   if (value.toLowerCase() === "complete") return "";
   return value;
 }
+function rowNeedsAttention(row: Row) {
+  const text = `${row.task_status || ""} ${row.status_note || ""} ${row.status || ""} ${row.due || ""}`.toLowerCase();
+  return (
+    text.includes("pending") ||
+    text.includes("follow up") ||
+    text.includes("confirm") ||
+    text.includes("urgent")
+  );
+}
+
+function inquiryNeedsAttention(row: Row) {
+  const text = `${row.status || ""} ${row.next_follow_up || ""}`.toLowerCase();
+  return (
+    text.includes("pending") ||
+    text.includes("follow up") ||
+    text.includes("hold") ||
+    text.includes("scheduled")
+  );
+}
 export default function DashboardClient() {
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -446,6 +465,9 @@ export default function DashboardClient() {
 const completedTasks = safeData.tasks.filter(
   (row) => getTaskState(row) === "completed"
 );
+
+const attentionTasks = openTasks.filter(rowNeedsAttention).slice(0, 3);
+const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0, 3);
 
   const callBuckets = safeData.calls.reduce(
     (acc, row) => {
@@ -513,6 +535,60 @@ const monthlyTotals = {
   return (
     <>
       <style>{`
+.attention-card {
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fff7f7 0%, #fffdfd 100%);
+  border: 1px solid #f3d6d6;
+  box-shadow: none;
+}
+
+.attention-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.attention-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #f1e5e5;
+}
+
+.attention-main {
+  min-width: 0;
+}
+
+.attention-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.35;
+}
+
+.attention-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.attention-badge {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
         
 .tasks-section-stack {
   display: grid;
@@ -598,13 +674,13 @@ const monthlyTotals = {
 }
 
 .task-note {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   color: #6b7280;
   background: #faf7f2;
   border: 1px solid #f3eadf;
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 .task-note.completed {
@@ -683,11 +759,11 @@ const monthlyTotals = {
         }
 
         .dashboard-grid {
-          display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 20px;
-          align-items: start;
-        }
+  display: grid;
+  grid-template-columns: 0.9fr 1.6fr;
+  gap: 20px;
+  align-items: start;
+}
 
         .left-column,
         .right-column {
@@ -1134,22 +1210,7 @@ const monthlyTotals = {
           }
         }
 
-        @media (max-width: 900px) {
-  .productivity-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .productivity-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .productivity-metric {
-    text-align: left;
-  }
-}
-
-.lower-grid {
+        .lower-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
@@ -1165,15 +1226,6 @@ const monthlyTotals = {
   .productivity-summary {
     grid-template-columns: 1fr;
   }
-@media (max-width: 640px) {
-  .kpi-row {
-    grid-template-columns: 1fr;
-  }
-
-  .kpi-card {
-    min-height: 84px;
-  }
-}
 
   .productivity-row {
     grid-template-columns: 1fr;
@@ -1205,6 +1257,16 @@ const monthlyTotals = {
 
   .inquiry-name {
     font-size: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card {
+    min-height: 84px;
   }
 }
       `}</style>
@@ -1240,9 +1302,7 @@ const monthlyTotals = {
         </div>
 
        <div className="kpi-row">
-  <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
-  <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
-  <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
+  
   <KpiCard label="Revenue (MTD)" value={String(collectedMTD)} accent="red" isMoney />
   <KpiCard
     label="Net (MTD)"
@@ -1254,543 +1314,309 @@ const monthlyTotals = {
     accent={netMTD >= 0 ? "green" : "red"}
     isMoney
   />
+<KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
+  <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
+  <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
 </div>
+<div className="dashboard-grid">
+  <div className="left-column">
+    <section className="card attention-card">
+      <div className="section-heading" style={{ marginBottom: 0 }}>
+        <div>
+          <h2 className="section-title">Needs Attention</h2>
+          <p className="section-subtitle">
+            Immediate follow-up items across tasks and inquiries
+          </p>
+        </div>
+      </div>
 
-        <div className="dashboard-grid">
-          <div className="left-column">
-            <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Inquiry Pipeline</h2>
-                  <p className="section-subtitle">
-                    Active inquiries, follow-up flow, and current status
-                  </p>
-                </div>
+      <div className="attention-list">
+        {[...attentionTasks, ...attentionInquiries].slice(0, 5).map((row, i) => (
+          <div key={i} className="attention-row">
+            <div className="attention-main">
+              <div className="attention-title">
+                {row.task || row.client_name || "Action item"}
               </div>
+              <div className="attention-meta">
+                {row.status_note ||
+                  row.next_follow_up ||
+                  row.status ||
+                  "Needs review"}
+              </div>
+            </div>
 
-              {safeData.calls.length ? (
-                <div className="inquiry-list">
-                  {safeData.calls.slice(0, 6).map((row, i) => {
-                    const colors = statusColor(row.status || "");
-                    return (
-                      <div key={i} className="inquiry-card">
-                        <div className="inquiry-top">
-                          <div>
-                            <div className="inquiry-name">
-                              {row.client_name || "New Inquiry"}
-                            </div>
-                            <div className="inquiry-contact">
-                              {row.contact_name || row.parent_name || "No contact listed"}
-                            </div>
-                          </div>
+            <div className="attention-badge">Action</div>
+          </div>
+        ))}
 
-                          {row.status ? (
-                            <div className="status-wrap">
-                              <span
-                                className="status-pill"
-                                style={{
-                                  background: colors.bg,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                }}
-                              >
-                                {getStatusLabel(row.status)}
-                              </span>
+        {!attentionTasks.length && !attentionInquiries.length ? (
+          <div className="soft-note">No urgent items flagged right now.</div>
+        ) : null}
+      </div>
+    </section>
 
-                              {getStatusDetail(row.status) ? (
-                                <div className="status-detail">{getStatusDetail(row.status)}</div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+    <section className="card section-card">
+      <div className="section-heading">
+        <div>
+          <h2 className="section-title">Open Tasks</h2>
+          <p className="section-subtitle">
+            Current action items and recent completions
+          </p>
+        </div>
+      </div>
 
-                        <div className="inquiry-grid">
-                          {row.call_date ? (
-                            <div>
-                              <strong>Date:</strong> {row.call_date}
-                            </div>
-                          ) : null}
-                          {row.age ? (
-                            <div>
-                              <strong>Age:</strong> {row.age}
-                            </div>
-                          ) : null}
-                          {row.service_needed ? (
-                            <div>
-                              <strong>Service:</strong> {row.service_needed}
-                            </div>
-                          ) : null}
-                          {row.assigned_to ? (
-                            <div>
-                              <strong>Assigned:</strong> {row.assigned_to}
-                            </div>
-                          ) : null}
-                          {row["source (referral, google, etc.)"] ? (
-                            <div>
-                              <strong>Source:</strong> {row["source (referral, google, etc.)"]}
-                            </div>
-                          ) : null}
-                          {row.next_follow_up ? (
-                            <div>
-                              <strong>Follow-Up:</strong> {row.next_follow_up}
-                            </div>
-                          ) : null}
-                        </div>
+      <div className="tasks-section-stack">
+        <div className="tasks-subsection">
+          <div className="tasks-subheading">Active Tasks</div>
+
+          {openTasks.length ? (
+            openTasks.map((row, i) => (
+              <div key={i} className="task-card-modern">
+                <div className="task-top-row">
+                  <div className="task-title-modern">
+                    {row.task || "Untitled task"}
+                  </div>
+                </div>
+
+                <div className="task-meta-row">
+                  {row.owner ? (
+                    <span className="task-chip owner">Owner: {row.owner}</span>
+                  ) : null}
+
+                  {formatTaskDue(row.due || "") ? (
+                    <span className="task-chip due">
+                      Due: {formatTaskDue(row.due || "")}
+                    </span>
+                  ) : null}
+                </div>
+
+                {getTaskNote(row) ? (
+                  <div className="task-note">{getTaskNote(row)}</div>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <div className="soft-note">No active tasks found.</div>
+          )}
+        </div>
+
+        <div className="tasks-subsection">
+          <div className="tasks-subheading">Recently Completed</div>
+
+          {completedTasks.length ? (
+            <div className="completed-list">
+              {completedTasks.slice(0, 4).map((row, i) => (
+                <div key={i} className="completed-task-row">
+                  <div className="completed-task-main">
+                    <div className="completed-task-title">
+                      ✓ {row.task || "Completed task"}
+                    </div>
+
+                    <div className="completed-task-meta">
+                      {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </div>
+                  </div>
+
+                  <div className="completed-task-date">
+                    {row.completed_date || "Completed"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="soft-note">No completed tasks yet.</div>
+          )}
+        </div>
+      </div>
+    </section>
+
+<section className="card section-card">
+      <div className="section-heading">
+        <div>
+          <h2 className="section-title">Financial Snapshot</h2>
+          <p className="section-subtitle">
+            Month-to-date collections, expenses, and upcoming obligations
+          </p>
+        </div>
+      </div>
+
+      <div className="billing-stack">
+        <div className="billing-hero">
+          <div className="billing-hero-label">Net (MTD)</div>
+          <div className="billing-hero-value">
+            {new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency: "USD",
+              maximumFractionDigits: 0,
+            }).format(netMTD)}
+          </div>
+        </div>
+
+        <div className="billing-secondary">
+          <div className="billing-item">
+            <div className="billing-item-label">Collected (MTD)</div>
+            <div className="billing-item-value">{collectedMTD}</div>
+          </div>
+
+          <div className="billing-item">
+            <div className="billing-item-label">Expenses (MTD)</div>
+            <div className="billing-item-value">
+              {new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+                maximumFractionDigits: 0,
+              }).format(expensesMTD)}
+            </div>
+          </div>
+
+          <div className="billing-item">
+            <div className="billing-item-label">Projected Month Total</div>
+            <div className="billing-item-value">
+              {billingCards.find((card) =>
+                normalizeStatus(card.label).includes("projected month total")
+              )?.value || "—"}
+            </div>
+          </div>
+
+          <div className="billing-item">
+            <div className="billing-item-label">Last Month (Collected)</div>
+            <div className="billing-item-value">{lastMonthCollected}</div>
+          </div>
+        </div>
+
+        <div className="billing-item" style={{ background: "#fafafa" }}>
+          <div className="billing-item-label" style={{ marginBottom: 10 }}>
+            Upcoming Expenses
+          </div>
+
+          {upcomingExpenses.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {upcomingExpenses.map((row, i) => {
+                const dueDate = parseMonthDayYear(row.due_date || "");
+                const isSoon =
+                  dueDate &&
+                  dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      alignItems: "center",
+                      borderBottom:
+                        i !== upcomingExpenses.length - 1
+                          ? "1px solid #e5e7eb"
+                          : "none",
+                      paddingBottom:
+                        i !== upcomingExpenses.length - 1 ? 10 : 0,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#111827" }}>
+                        {row.expense_name || "Expense"}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="soft-note">No inquiries found.</div>
-              )}
-            </section>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "#6b7280",
+                          marginTop: 2,
+                        }}
+                      >
+                        {[row.category, row.due_date].filter(Boolean).join(" • ")}
+                      </div>
+                    </div>
 
-            <div className="lower-grid">
-              <section className="card section-card">
-                <div className="section-heading">
-                  <div>
-                    <h2 className="section-title">Daily Productivity</h2>
-                    <p className="section-subtitle">Today’s therapist totals</p>
-                  </div>
-                </div>
-
-               {dailyRows.length ? (
-  <>
-    <div className="productivity-summary">
-      <div className="productivity-stat">
-        <div className="productivity-stat-label">Charges</div>
-        <div className="productivity-stat-value">
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 0,
-          }).format(dailyTotals.charges)}
-        </div>
-      </div>
-
-      <div className="productivity-stat">
-        <div className="productivity-stat-label">Visits</div>
-        <div className="productivity-stat-value">{dailyTotals.visits}</div>
-      </div>
-
-      <div className="productivity-stat">
-        <div className="productivity-stat-label">Duration</div>
-        <div className="productivity-stat-value">{dailyTotals.duration}</div>
-      </div>
-    </div>
-
-    <div className="productivity-list">
-      {dailyRows.map((row, i) => (
-        <div key={i} className="productivity-row">
-          <div className="productivity-person">
-            <div className="productivity-name">
-              {row.therapist || "Unknown Therapist"}
-            </div>
-            <div className="productivity-meta">
-              {[row.service, row.location].filter(Boolean).join(" • ")}
-            </div>
-          </div>
-
-          <div className="productivity-metric">
-            <div className="productivity-metric-label">Duration</div>
-            <div className="productivity-metric-value">{row.duration || "—"}</div>
-          </div>
-
-          <div className="productivity-metric">
-            <div className="productivity-metric-label">Charges</div>
-            <div className="productivity-metric-value">
-              {row.charges
-                ? new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "USD",
-                    maximumFractionDigits: 0,
-                  }).format(parseNumber(row.charges))
-                : "—"}
-            </div>
-          </div>
-
-          <div className="productivity-metric">
-            <div className="productivity-metric-label">Visits</div>
-            <div className="productivity-metric-value">{row.visits || "—"}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </>
-) : (
-  <div className="soft-note">No daily productivity data found.</div>
-)}
-              </section>
-
-              <section className="card section-card">
-                <div className="section-heading">
-                  <div>
-                    <h2 className="section-title">Monthly Productivity</h2>
-                    <p className="section-subtitle">Month-to-date therapist totals</p>
-                  </div>
-                </div>
-
-                {monthlyRows.length ? (
-                  <>
-                    <div className="productivity-summary">
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Charges</div>
-                        <div className="productivity-stat-value">
-                          {new Intl.NumberFormat("en-US", {
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        color: isSoon ? "#b91c1c" : "#991b1b",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {row.amount
+                        ? new Intl.NumberFormat("en-US", {
                             style: "currency",
                             currency: "USD",
                             maximumFractionDigits: 0,
-                          }).format(monthlyTotals.charges)}
-                        </div>
-                      </div>
-
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Visits</div>
-                        <div className="productivity-stat-value">{monthlyTotals.visits}</div>
-                      </div>
-
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Duration</div>
-                        <div className="productivity-stat-value">{monthlyTotals.duration}</div>
-                      </div>
+                          }).format(parseNumber(row.amount))
+                        : "—"}
                     </div>
-
-                    <div className="productivity-list">
-                      {monthlyRows.map((row, i) => (
-                        <div key={i} className="productivity-row">
-                          <div className="productivity-person">
-                            <div className="productivity-name">
-                              {row.therapist || "Unknown Therapist"}
-                            </div>
-                            <div className="productivity-meta">
-                              {[row.service, row.location].filter(Boolean).join(" • ")}
-                            </div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Duration</div>
-                            <div className="productivity-metric-value">
-                              {row.duration || "—"}
-                            </div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Charges</div>
-                            <div className="productivity-metric-value">
-                              {row.charges ? formatValue("charges", row.charges) : "—"}
-                            </div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Visits</div>
-                            <div className="productivity-metric-value">
-                              {row.visits || "—"}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="soft-note">No monthly productivity data found.</div>
-                )}
-              </section>
-
-              <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
-                <div className="section-heading">
-                  <div>
-                    <h2 className="section-title">Capacity, Cancellations & Rescheduling</h2>
-                    <p className="section-subtitle">Scheduling and therapist availability</p>
                   </div>
-                </div>
-
-                {safeData.capacity.length ? (
-                  <div className="employee-list">
-                    {safeData.capacity.slice(0, 4).map((row, i) => (
-                      <div key={i} className="employee-card">
-                        <div className="employee-name">{row.therapist || "Unknown Therapist"}</div>
-                        <div className="employee-role">
-                          {[
-                            row.booked_percent ? `${row.booked_percent}% booked` : "",
-                            row.open_slots ? `Open slots: ${row.open_slots}` : "",
-                            row.revenue_gap
-                              ? `Gap: ${formatValue("revenue_gap", row.revenue_gap)}`
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" • ")}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="soft-note">No capacity data found.</div>
-                )}
-              </section>
+                );
+              })}
             </div>
-          </div>
-
-          <div className="right-column">
-           <section className="card section-card">
-  <div className="section-heading">
-    <div>
-      <h2 className="section-title">Open Tasks</h2>
-      <p className="section-subtitle">Current action items and recent completions</p>
-    </div>
-  </div>
-
-  <div className="tasks-section-stack">
-    <div className="tasks-subsection">
-      <div className="tasks-subheading">Active Tasks</div>
-
-      {openTasks.length ? (
-        openTasks.map((row, i) => (
-          <div key={i} className="task-card-modern">
-            <div className="task-top-row">
-              <div className="task-title-modern">
-                {row.task || "Untitled task"}
-              </div>
-            </div>
-
-            <div className="task-meta-row">
-              {row.owner ? (
-                <span className="task-chip owner">Owner: {row.owner}</span>
-              ) : null}
-
-              {formatTaskDue(row.due || "") ? (
-                <span className="task-chip due">Due: {formatTaskDue(row.due || "")}</span>
-              ) : null}
-            </div>
-
-            {getTaskNote(row) ? (
-              <div className="task-note">{getTaskNote(row)}</div>
-            ) : null}
-          </div>
-        ))
-      ) : (
-        <div className="soft-note">No active tasks found.</div>
-      )}
-    </div>
-
-    <div className="tasks-subsection">
-      <div className="tasks-subheading">Recently Completed</div>
-
-      {completedTasks.length ? (
-        <div className="completed-list">
-          {completedTasks.slice(0, 4).map((row, i) => (
-            <div key={i} className="completed-task-row">
-              <div className="completed-task-main">
-                <div className="completed-task-title">
-                  ✓ {row.task || "Completed task"}
-                </div>
-
-                <div className="completed-task-meta">
-                  {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
-                    .filter(Boolean)
-                    .join(" • ")}
-                </div>
-              </div>
-
-              <div className="completed-task-date">
-                {row.completed_date || "Completed"}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="soft-note">No completed tasks yet.</div>
-      )}
-    </div>
-  </div>
-</section>
-            <section className="card section-card">
-  <div className="section-heading">
-    <div>
-      <h2 className="section-title">Financial Snapshot</h2>
-      <p className="section-subtitle">
-        Month-to-date collections, expenses, and upcoming obligations
-      </p>
-    </div>
-  </div>
-
-  <div className="billing-stack">
-    <div className="billing-hero">
-      <div className="billing-hero-label">Net (MTD)</div>
-      <div className="billing-hero-value">
-        {new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 0,
-        }).format(netMTD)}
-      </div>
-    </div>
-
-    <div className="billing-secondary">
-      <div className="billing-item">
-        <div className="billing-item-label">Collected (MTD)</div>
-        <div className="billing-item-value">{collectedMTD}</div>
-      </div>
-
-      <div className="billing-item">
-        <div className="billing-item-label">Expenses (MTD)</div>
-        <div className="billing-item-value">
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 0,
-          }).format(expensesMTD)}
+          ) : (
+            <div className="soft-note">No upcoming expenses listed.</div>
+          )}
         </div>
       </div>
-
-      <div className="billing-item">
-        <div className="billing-item-label">Projected Month Total</div>
-        <div className="billing-item-value">
-          {billingCards.find((card) =>
-            normalizeStatus(card.label).includes("projected month total")
-          )?.value || "—"}
-        </div>
-      </div>
-
-      <div className="billing-item">
-        <div className="billing-item-label">Last Month (Collected)</div>
-        <div className="billing-item-value">{lastMonthCollected}</div>
-      </div>
-    </div>
-
-    <div className="billing-item" style={{ background: "#fafafa" }}>
-      <div className="billing-item-label" style={{ marginBottom: 10 }}>
-        Upcoming Expenses
-      </div>
-
-      {upcomingExpenses.length ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          {upcomingExpenses.map((row, i) => {
-            const dueDate = parseMonthDayYear(row.due_date || "");
-            const isSoon =
-              dueDate &&
-              dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
-
-            return (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  borderBottom:
-                    i !== upcomingExpenses.length - 1
-                      ? "1px solid #e5e7eb"
-                      : "none",
-                  paddingBottom:
-                    i !== upcomingExpenses.length - 1 ? 10 : 0,
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, color: "#111827" }}>
-                    {row.expense_name || "Expense"}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#6b7280",
-                      marginTop: 2,
-                    }}
-                  >
-                    {[row.category, row.due_date].filter(Boolean).join(" • ")}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontWeight: 800,
-                    color: isSoon ? "#b91c1c" : "#991b1b",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {row.amount
-                    ? new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      }).format(parseNumber(row.amount))
-                    : "—"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="soft-note">No upcoming expenses listed.</div>
-      )}
-    </div>
-  </div>
-</section>
-
-            <section className="card section-card">
+    </section>
+<section className="card section-card">
   <div className="section-heading">
     <div>
       <h2 className="section-title">Team & Milestones</h2>
-      <p className="section-subtitle">
-        Upcoming celebrations and key dates
-      </p>
+      <p className="section-subtitle">Upcoming celebrations and key dates</p>
     </div>
   </div>
 
   {upcomingEmployeeEvents.length ? (
-  <div className="milestone-feature">
-    <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
+    <div className="milestone-feature">
+      <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
 
-    <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-      {upcomingEmployeeEvents.map((event, i) => (
-        <div
-          key={`${event.employee}-${event.type}-${i}`}
-          style={{
-            paddingBottom:
-              i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
-            borderBottom:
-              i !== upcomingEmployeeEvents.length - 1
-                ? "1px solid #e5e7eb"
-                : "none",
-          }}
-        >
+      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        {upcomingEmployeeEvents.map((event, i) => (
           <div
+            key={`${event.employee}-${event.type}-${i}`}
             style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#f4ecea",
+              paddingBottom: i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
+              borderBottom:
+                i !== upcomingEmployeeEvents.length - 1
+                  ? "1px solid #e5e7eb"
+                  : "none",
             }}
           >
-            {event.employee}
-          </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#f4ecea",
+              }}
+            >
+              {event.employee}
+            </div>
 
-          <div
-            style={{
-              marginTop: 2,
-              fontSize: 14,
-              color: "#f59fb9",
-            }}
-          >
-            {event.role}
-          </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontSize: 14,
+                color: "#f59fb9",
+              }}
+            >
+              {event.role}
+            </div>
 
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 15,
-              fontWeight: 600,
-              color: "#f4ecea",
-            }}
-          >
-            {event.type === "birthday"
-              ? `🧁 Birthday — ${event.label}`
-              : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 15,
+                fontWeight: 600,
+                color: "#f4ecea",
+              }}
+            >
+              {event.type === "birthday"
+                ? `🧁 Birthday — ${event.label}`
+                : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
-  </div>
-) : null}
+  ) : null}
+
   {safeData.employees.length ? (
     <div className="employee-list">
       {safeData.employees.map((row, i) => {
@@ -1802,12 +1628,10 @@ const monthlyTotals = {
               {row.employee || "Unknown Employee"}
             </div>
 
-            <div className="employee-role">
-              {row.role || ""}
-            </div>
+            <div className="employee-role">{row.role || ""}</div>
 
             <div className="employee-tags">
-              {row.birthday && (
+              {row.birthday ? (
                 <div
                   className="tag"
                   style={{
@@ -1821,14 +1645,14 @@ const monthlyTotals = {
                 >
                   🧁 {formatMonthDayOnly(row.birthday)}
                 </div>
-              )}
+              ) : null}
 
-              {row.work_anniversary && (
+              {row.work_anniversary ? (
                 <div
                   className="tag"
                   style={{
                     background: "#f8fafc",
-border: ".5px solid #f1d5db",
+                    border: ".5px solid #f1d5db",
                     color: "#111827",
                     padding: "10px 16px",
                     borderRadius: 999,
@@ -1836,14 +1660,14 @@ border: ".5px solid #f1d5db",
                     fontWeight: 500,
                   }}
                 >
-                  <span style={{ color: "#e9a9bf" }}>🎉</span>
+                  <span style={{ color: "#e9a9bf" }}>🎉</span>{" "}
                   {formatAnniversaryFull(row.work_anniversary)} —{" "}
                   {formatYearsLabel(years)}
                 </div>
-              )}
+              ) : null}
             </div>
 
-            {(row.license || row.npi) && (
+            {row.license || row.npi ? (
               <div
                 style={{
                   marginTop: 16,
@@ -1852,30 +1676,299 @@ border: ".5px solid #f1d5db",
                   fontWeight: 500,
                 }}
               >
-                {row.license && (
-                  <span>LICENSE: {row.license}</span>
-                )}
+                {row.license ? <span>LICENSE: {row.license}</span> : null}
 
-                {row.license && row.npi && (
+                {row.license && row.npi ? (
                   <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
-                )}
+                ) : null}
 
-                {row.npi && <span>NPI: {row.npi}</span>}
+                {row.npi ? <span>NPI: {row.npi}</span> : null}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}
     </div>
   ) : (
-    <div className="soft-note">
-      No employee data found.
-    </div>
+    <div className="soft-note">No employee data found.</div>
   )}
 </section>
+
+</div>
+  <div className="right-column">
+  <section className="card section-card">
+    <div className="section-heading">
+      <div>
+        <h2 className="section-title">Inquiry Pipeline</h2>
+        <p className="section-subtitle">
+          Active inquiries, follow-up flow, and current status
+        </p>
+      </div>
+    </div>
+
+    {safeData.calls.length ? (
+      <div className="inquiry-list">
+        {safeData.calls.slice(0, 6).map((row, i) => {
+          const colors = statusColor(row.status || "");
+          return (
+            <div key={i} className="inquiry-card">
+              <div className="inquiry-top">
+                <div>
+                  <div className="inquiry-name">
+                    {row.client_name || "New Inquiry"}
+                  </div>
+                  <div className="inquiry-contact">
+                    {row.contact_name || row.parent_name || "No contact listed"}
+                  </div>
+                </div>
+
+                {row.status ? (
+                  <div className="status-wrap">
+                    <span
+                      className="status-pill"
+                      style={{
+                        background: colors.bg,
+                        color: colors.text,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      {getStatusLabel(row.status)}
+                    </span>
+
+                    {getStatusDetail(row.status) ? (
+                      <div className="status-detail">{getStatusDetail(row.status)}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="inquiry-grid">
+                {row.call_date ? (
+                  <div>
+                    <strong>Date:</strong> {row.call_date}
+                  </div>
+                ) : null}
+                {row.age ? (
+                  <div>
+                    <strong>Age:</strong> {row.age}
+                  </div>
+                ) : null}
+                {row.service_needed ? (
+                  <div>
+                    <strong>Service:</strong> {row.service_needed}
+                  </div>
+                ) : null}
+                {row.assigned_to ? (
+                  <div>
+                    <strong>Assigned:</strong> {row.assigned_to}
+                  </div>
+                ) : null}
+                {row["source (referral, google, etc.)"] ? (
+                  <div>
+                    <strong>Source:</strong> {row["source (referral, google, etc.)"]}
+                  </div>
+                ) : null}
+                {row.next_follow_up ? (
+                  <div>
+                    <strong>Follow-Up:</strong> {row.next_follow_up}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="soft-note">No inquiries found.</div>
+    )}
+  </section>
+
+  <div className="lower-grid">
+  <section className="card section-card">
+    <div className="section-heading">
+      <div>
+        <h2 className="section-title">Daily Productivity</h2>
+        <p className="section-subtitle">Today’s therapist totals</p>
+      </div>
+    </div>
+
+    {dailyRows.length ? (
+      <>
+        <div className="productivity-summary">
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Charges</div>
+            <div className="productivity-stat-value">
+              {new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+                maximumFractionDigits: 0,
+              }).format(dailyTotals.charges)}
+            </div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Visits</div>
+            <div className="productivity-stat-value">{dailyTotals.visits}</div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Duration</div>
+            <div className="productivity-stat-value">{dailyTotals.duration}</div>
           </div>
         </div>
+
+        <div className="productivity-list">
+          {dailyRows.map((row, i) => (
+            <div key={i} className="productivity-row">
+              <div className="productivity-person">
+                <div className="productivity-name">
+                  {row.therapist || "Unknown Therapist"}
+                </div>
+                <div className="productivity-meta">
+                  {[row.service, row.location].filter(Boolean).join(" • ")}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Duration</div>
+                <div className="productivity-metric-value">{row.duration || "—"}</div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Charges</div>
+                <div className="productivity-metric-value">
+                  {row.charges
+                    ? new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      }).format(parseNumber(row.charges))
+                    : "—"}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Visits</div>
+                <div className="productivity-metric-value">{row.visits || "—"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    ) : (
+      <div className="soft-note">No daily productivity data found.</div>
+    )}
+  </section>
+
+  <section className="card section-card">
+    <div className="section-heading">
+      <div>
+        <h2 className="section-title">Monthly Productivity</h2>
+        <p className="section-subtitle">Month-to-date therapist totals</p>
       </div>
+    </div>
+
+    {monthlyRows.length ? (
+      <>
+        <div className="productivity-summary">
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Charges</div>
+            <div className="productivity-stat-value">
+              {new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+                maximumFractionDigits: 0,
+              }).format(monthlyTotals.charges)}
+            </div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Visits</div>
+            <div className="productivity-stat-value">{monthlyTotals.visits}</div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Duration</div>
+            <div className="productivity-stat-value">{monthlyTotals.duration}</div>
+          </div>
+        </div>
+
+        <div className="productivity-list">
+          {monthlyRows.map((row, i) => (
+            <div key={i} className="productivity-row">
+              <div className="productivity-person">
+                <div className="productivity-name">
+                  {row.therapist || "Unknown Therapist"}
+                </div>
+                <div className="productivity-meta">
+                  {[row.service, row.location].filter(Boolean).join(" • ")}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Duration</div>
+                <div className="productivity-metric-value">{row.duration || "—"}</div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Charges</div>
+                <div className="productivity-metric-value">
+                  {row.charges ? formatValue("charges", row.charges) : "—"}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Visits</div>
+                <div className="productivity-metric-value">{row.visits || "—"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    ) : (
+      <div className="soft-note">No monthly productivity data found.</div>
+    )}
+  </section>
+
+  <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
+    <div className="section-heading">
+      <div>
+        <h2 className="section-title">Capacity, Cancellations & Rescheduling</h2>
+        <p className="section-subtitle">Scheduling and therapist availability</p>
+      </div>
+    </div>
+
+    {safeData.capacity.length ? (
+      <div className="employee-list">
+        {safeData.capacity.slice(0, 4).map((row, i) => (
+          <div key={i} className="employee-card">
+            <div className="employee-name">{row.therapist || "Unknown Therapist"}</div>
+            <div className="employee-role">
+              {[
+                row.booked_percent ? `${row.booked_percent}% booked` : "",
+                row.open_slots ? `Open slots: ${row.open_slots}` : "",
+                row.revenue_gap
+                  ? `Gap: ${formatValue("revenue_gap", row.revenue_gap)}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" • ")}
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="soft-note">No capacity data found.</div>
+    )}
+  </section>
+</div>
+
+  
+  </div>
+
+
+</div>
+</div>
     </>
   );
 }
