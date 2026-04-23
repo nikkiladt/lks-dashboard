@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 type Row = Record<string, string>;
+
 type DataState = {
   billing: Row[];
   capacity: Row[];
@@ -19,11 +20,20 @@ function looksLikeMoney(label: string, value: string) {
   const cleaned = String(value || "").replace(/[$,%\s,]/g, "");
   const isNumeric = cleaned !== "" && !Number.isNaN(Number(cleaned));
   const l = label.toLowerCase();
+
   return (
-    /collected|expected|projected|revenue|amount|billed|pending|salary|cost|income|gap|balance|total/.test(
+    /collected|expected|projected|revenue|amount|billed|pending|salary|cost|income|gap|balance|total|expenses|net|remaining/.test(
       l
     ) && isNumeric
   );
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function formatValue(label: string, value: string) {
@@ -32,11 +42,7 @@ function formatValue(label: string, value: string) {
   if (looksLikeMoney(label, value)) {
     const num = Number(String(value).replace(/[^0-9.-]/g, ""));
     if (Number.isNaN(num)) return value;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(num);
+    return formatMoney(num);
   }
 
   return value;
@@ -50,6 +56,174 @@ function prettyLabel(label: string) {
 
 function normalizeStatus(status: string) {
   return (status || "").toLowerCase().trim();
+}
+
+function parseNumber(value: string) {
+  if (!value) return 0;
+  const cleaned = String(value).replace(/[^0-9.-]/g, "");
+  const num = Number(cleaned);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+function parseMonthDayYear(dateString: string) {
+  if (!dateString) return null;
+
+  const parsed = new Date(dateString);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const parts = dateString.split("/");
+  if (parts.length === 3) {
+    const [month, day, year] = parts.map(Number);
+    const manual = new Date(year, month - 1, day);
+    if (!Number.isNaN(manual.getTime())) return manual;
+  }
+
+  return null;
+}
+
+function isCurrentMonth(dateString: string) {
+  const date = parseMonthDayYear(dateString);
+  if (!date) return false;
+
+  const now = new Date();
+  return (
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+  );
+}
+
+function isCurrentMonthExpense(dateString: string) {
+  return isCurrentMonth(dateString);
+}
+
+function isUpcomingExpense(row: Row) {
+  const status = normalizeStatus(row.status || "");
+  return status === "upcoming";
+}
+
+function sortExpensesByDate(rows: Row[]) {
+  return [...rows].sort((a, b) => {
+    const aDate =
+      parseMonthDayYear(a.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bDate =
+      parseMonthDayYear(b.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
+    return aDate - bDate;
+  });
+}
+
+function sumExpensesMTD(rows: Row[]) {
+  return rows
+    .filter((row) => isCurrentMonthExpense(row.due_date || ""))
+    .reduce((sum, row) => sum + parseNumber(row.amount || ""), 0);
+}
+
+function isScheduledAssessment(status: string) {
+  return normalizeStatus(status).includes("assessment scheduled");
+}
+
+function isCompletedAssessment(status: string) {
+  return normalizeStatus(status).includes("assessment completed");
+}
+
+function getBillingCards(billingRows: Row[]) {
+  const firstRow = billingRows[0];
+  if (!firstRow) return [];
+
+  return Object.entries(firstRow).map(([label, value]) => ({
+    label: prettyLabel(label),
+    rawLabel: label,
+    value: formatValue(label, value),
+    rawValue: value,
+  }));
+}
+
+function getBillingAmountByLabel(billingRows: Row[], matchers: string[]) {
+  const firstRow = billingRows[0];
+  if (!firstRow) return 0;
+
+  const entry = Object.entries(firstRow).find(([label]) => {
+    const normalized = normalizeStatus(label);
+    return matchers.some((matcher) => normalized.includes(normalizeStatus(matcher)));
+  });
+
+  return entry ? parseNumber(entry[1]) : 0;
+}
+
+function sumCharges(rows: Row[]) {
+  return rows.reduce((sum, row) => sum + parseNumber(row.charges || ""), 0);
+}
+
+function sumVisits(rows: Row[]) {
+  return rows.reduce((sum, row) => sum + parseNumber(row.visits || ""), 0);
+}
+
+function sumDurations(rows: Row[]) {
+  const totalSeconds = rows.reduce((sum, row) => {
+    const value = row.duration || "";
+    const parts = value.split(":").map(Number);
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return sum;
+    const [hours, minutes, seconds] = parts;
+    return sum + hours * 3600 + minutes * 60 + seconds;
+  }, 0);
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function isProductivityDataRow(row: Row) {
+  const therapist = normalizeStatus(row.therapist || "");
+  return !!row.therapist && therapist !== "total" && !therapist.includes("--");
+}
+
+function sortProductivityRows(rows: Row[]) {
+  return [...rows].sort(
+    (a, b) => parseNumber(b.charges || "") - parseNumber(a.charges || "")
+  );
+}
+
+function getTaskState(row: Row) {
+  const raw = (row.task_status || row.status || "").toLowerCase().trim();
+
+  if (
+    raw.includes("complete") ||
+    raw.includes("completed") ||
+    raw === "done"
+  ) {
+    return "completed";
+  }
+
+  return "open";
+}
+
+function getTaskNote(row: Row) {
+  return row.status_note || row.status || "";
+}
+
+function formatTaskDue(value: string) {
+  if (!value) return "";
+  if (value.toLowerCase() === "complete") return "";
+  return value;
+}
+
+function rowNeedsAttention(row: Row) {
+  const text = `${row.task_status || ""} ${row.status_note || ""} ${row.status || ""} ${row.due || ""}`.toLowerCase();
+  return (
+    text.includes("pending") ||
+    text.includes("follow up") ||
+    text.includes("confirm") ||
+    text.includes("urgent")
+  );
+}
+
+function inquiryNeedsAttention(row: Row) {
+  const text = `${row.status || ""} ${row.next_follow_up || ""}`.toLowerCase();
+  return (
+    text.includes("pending") ||
+    text.includes("follow up") ||
+    text.includes("hold") ||
+    text.includes("scheduled")
+  );
 }
 
 function statusColor(status: string) {
@@ -99,7 +273,6 @@ function getStatusDetail(status: string) {
   if (!status) return "";
 
   const raw = status.trim();
-
   if (raw.includes(" - ")) {
     const parts = raw.split(" - ");
     parts.shift();
@@ -107,51 +280,6 @@ function getStatusDetail(status: string) {
   }
 
   return "";
-}
-
-function parseMonthDayYear(dateString: string) {
-  if (!dateString) return null;
-
-  const parsed = new Date(dateString);
-  if (!Number.isNaN(parsed.getTime())) return parsed;
-
-  const parts = dateString.split("/");
-  if (parts.length === 3) {
-    const [month, day, year] = parts.map(Number);
-    const manual = new Date(year, month - 1, day);
-    if (!Number.isNaN(manual.getTime())) return manual;
-  }
-
-  return null;
-}
-
-function isCurrentMonth(dateString: string) {
-  const date = parseMonthDayYear(dateString);
-  if (!date) return false;
-
-  const now = new Date();
-  return (
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear()
-  );
-}
-
-function isScheduledAssessment(status: string) {
-  return normalizeStatus(status).includes("assessment scheduled");
-}
-
-function isCompletedAssessment(status: string) {
-  return normalizeStatus(status).includes("assessment completed");
-}
-
-function getBillingCards(billingRows: Row[]) {
-  const firstRow = billingRows[0];
-  if (!firstRow) return [];
-
-  return Object.entries(firstRow).map(([label, value]) => ({
-    label: prettyLabel(label),
-    value: formatValue(label, value),
-  }));
 }
 
 function formatMonthDayOnly(value: string) {
@@ -191,6 +319,66 @@ function getNextOccurrence(value: string) {
   return next;
 }
 
+function getUpcomingAnniversaryYears(dateString: string) {
+  if (!dateString) return null;
+
+  const start = new Date(dateString);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const now = new Date();
+  let years = now.getFullYear() - start.getFullYear();
+
+  const thisYearAnniversary = new Date(
+    now.getFullYear(),
+    start.getMonth(),
+    start.getDate()
+  );
+
+  if (thisYearAnniversary < now) {
+    years += 1;
+  }
+
+  return years;
+}
+
+function getWorkAnniversaryYears(dateString: string) {
+  if (!dateString) return null;
+
+  const start = new Date(dateString);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const now = new Date();
+  let years = now.getFullYear() - start.getFullYear();
+
+  const hasHadAnniversaryThisYear =
+    now.getMonth() > start.getMonth() ||
+    (now.getMonth() === start.getMonth() && now.getDate() >= start.getDate());
+
+  if (!hasHadAnniversaryThisYear) {
+    years -= 1;
+  }
+
+  return years;
+}
+
+function formatAnniversaryFull(dateString: string) {
+  if (!dateString) return "";
+
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return dateString;
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatYearsLabel(years: number | null) {
+  if (years === null) return "";
+  return `${years} year${years === 1 ? "" : "s"}`;
+}
+
 function getUpcomingEmployeeEvents(employees: Row[], daysAhead = 45) {
   const events: {
     employee: string;
@@ -204,7 +392,6 @@ function getUpcomingEmployeeEvents(employees: Row[], daysAhead = 45) {
   const now = new Date();
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-
   const maxTime = today.getTime() + daysAhead * 24 * 60 * 60 * 1000;
 
   employees.forEach((row) => {
@@ -248,181 +435,12 @@ function getUpcomingEmployeeEvents(employees: Row[], daysAhead = 45) {
   return events.sort((a, b) => a.timestamp - b.timestamp);
 }
 
-function getWorkAnniversaryYears(dateString: string) {
-  if (!dateString) return null;
-
-  const start = new Date(dateString);
-  if (Number.isNaN(start.getTime())) return null;
-
-  const now = new Date();
-
-  let years = now.getFullYear() - start.getFullYear();
-
-  const hasHadAnniversaryThisYear =
-    now.getMonth() > start.getMonth() ||
-    (now.getMonth() === start.getMonth() && now.getDate() >= start.getDate());
-
-  if (!hasHadAnniversaryThisYear) {
-    years -= 1;
-  }
-
-  return years;
+function getDaysInMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
-function isTaskOpen(status: string) {
-  const s = normalizeStatus(status);
-  return !s.includes("done") && !s.includes("complete") && !s.includes("completed");
-}
-
-function parseNumber(value: string) {
-  if (!value) return 0;
-  const cleaned = String(value).replace(/[^0-9.-]/g, "");
-  const num = Number(cleaned);
-  return Number.isNaN(num) ? 0 : num;
-}
-
-function sumCharges(rows: Row[]) {
-  return rows.reduce((sum, row) => sum + parseNumber(row.charges || ""), 0);
-}
-
-function sumVisits(rows: Row[]) {
-  return rows.reduce((sum, row) => sum + parseNumber(row.visits || ""), 0);
-}
-
-function sumDurations(rows: Row[]) {
-  const totalSeconds = rows.reduce((sum, row) => {
-    const value = row.duration || "";
-    const parts = value.split(":").map(Number);
-    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return sum;
-    const [hours, minutes, seconds] = parts;
-    return sum + hours * 3600 + minutes * 60 + seconds;
-  }, 0);
-
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
-function isProductivityDataRow(row: Row) {
-  const therapist = normalizeStatus(row.therapist || "");
-  return !!row.therapist && therapist !== "total" && !therapist.includes("--");
-}
-
-function sortProductivityRows(rows: Row[]) {
-  return [...rows].sort(
-    (a, b) => parseNumber(b.charges || "") - parseNumber(a.charges || "")
-  );
-}
-function isCurrentMonthExpense(dateString: string) {
-  return isCurrentMonth(dateString);
-}
-
-function isUpcomingExpense(row: Row) {
-  const status = normalizeStatus(row.status || "");
-  return status === "upcoming";
-}
-
-function sumExpensesMTD(rows: Row[]) {
-  return rows
-    .filter((row) => isCurrentMonthExpense(row.due_date || ""))
-    .reduce((sum, row) => sum + parseNumber(row.amount || ""), 0);
-}
-
-function sortExpensesByDate(rows: Row[]) {
-  return [...rows].sort((a, b) => {
-    const aDate = parseMonthDayYear(a.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
-    const bDate = parseMonthDayYear(b.due_date || "")?.getTime() ?? Number.POSITIVE_INFINITY;
-    return aDate - bDate;
-  });
-}
-
-function formatAnniversaryFull(dateString: string) {
-  if (!dateString) return "";
-
-  const parsed = new Date(dateString);
-  if (Number.isNaN(parsed.getTime())) return dateString;
-
-  return parsed.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatYearsLabel(years: number | null) {
-  if (years === null) return "";
-  return `${years} year${years === 1 ? "" : "s"}`;
-}
-function getUpcomingAnniversaryYears(dateString: string) {
-  if (!dateString) return null;
-
-  const start = new Date(dateString);
-  if (Number.isNaN(start.getTime())) return null;
-
-  const now = new Date();
-
-  let years = now.getFullYear() - start.getFullYear();
-
-  const thisYearAnniversary = new Date(
-    now.getFullYear(),
-    start.getMonth(),
-    start.getDate()
-  );
-
-  // If anniversary already passed this year → next one is +1
-  if (thisYearAnniversary < now) {
-    years += 1;
-  }
-
-  return years;
-}
-function getTaskState(row: Row) {
-  const raw = (
-    row.task_status ||
-    row.status ||
-    ""
-  ).toLowerCase().trim();
-
-  if (
-    raw.includes("complete") ||
-    raw.includes("completed") ||
-    raw === "done"
-  ) {
-    return "completed";
-  }
-
-  return "open";
-}
-
-function getTaskNote(row: Row) {
-  return row.status_note || row.status || "";
-}
-
-function formatTaskDue(value: string) {
-  if (!value) return "";
-  if (value.toLowerCase() === "complete") return "";
-  return value;
-}
-function rowNeedsAttention(row: Row) {
-  const text = `${row.task_status || ""} ${row.status_note || ""} ${row.status || ""} ${row.due || ""}`.toLowerCase();
-  return (
-    text.includes("pending") ||
-    text.includes("follow up") ||
-    text.includes("confirm") ||
-    text.includes("urgent")
-  );
-}
-
-function inquiryNeedsAttention(row: Row) {
-  const text = `${row.status || ""} ${row.next_follow_up || ""}`.toLowerCase();
-  return (
-    text.includes("pending") ||
-    text.includes("follow up") ||
-    text.includes("hold") ||
-    text.includes("scheduled")
-  );
-}
 export default function DashboardClient() {
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [data, setData] = useState<DataState | null>(null);
   const [loadError, setLoadError] = useState("");
   const hasLoaded = useRef(false);
@@ -447,6 +465,13 @@ export default function DashboardClient() {
     }
 
     loadData();
+
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   if (!data && !loadError) {
@@ -462,12 +487,12 @@ export default function DashboardClient() {
   const upcomingEmployeeEvents = getUpcomingEmployeeEvents(safeData.employees, 45);
 
   const openTasks = safeData.tasks.filter((row) => getTaskState(row) === "open");
-const completedTasks = safeData.tasks.filter(
-  (row) => getTaskState(row) === "completed"
-);
+  const completedTasks = safeData.tasks.filter(
+    (row) => getTaskState(row) === "completed"
+  );
 
-const attentionTasks = openTasks.filter(rowNeedsAttention).slice(0, 3);
-const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0, 3);
+  const attentionTasks = openTasks.filter(rowNeedsAttention).slice(0, 3);
+  const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0, 3);
 
   const callBuckets = safeData.calls.reduce(
     (acc, row) => {
@@ -477,14 +502,8 @@ const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0,
 
       const status = row.status || "";
 
-      if (isScheduledAssessment(status)) {
-        acc.scheduledCount += 1;
-      }
-
-      if (isCompletedAssessment(status)) {
-        acc.completedCount += 1;
-      }
-
+      if (isScheduledAssessment(status)) acc.scheduledCount += 1;
+      if (isCompletedAssessment(status)) acc.completedCount += 1;
       if (!isCompletedAssessment(status) && !normalizeStatus(status).includes("declined")) {
         acc.pipelineCount += 1;
       }
@@ -499,237 +518,83 @@ const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0,
     }
   );
 
-  const collectedMTD =
-    billingCards.find((card) => normalizeStatus(card.label).includes("collected (mtd)"))?.value ||
-    "—";
+  const cashCollectedMTD = getBillingAmountByLabel(safeData.billing, [
+    "collected (mtd)",
+    "collected mtd",
+    "collections",
+  ]);
 
-  const lastMonthCollected =
-    billingCards.find((card) => normalizeStatus(card.label).includes("last month"))?.value || "—";
+  // Current billed value represents services performed this month.
+  const billedServicesMTD = Math.max(sumCharges(safeData.monthlyProductivity || []), 0);
 
-const expensesMTD = sumExpensesMTD(safeData.expenses || []);
-const netMTD = parseNumber(String(collectedMTD)) - expensesMTD;
+  // Until payments are tagged by service month, service-month collections are estimated.
+  const collectedForCurrentServiceMonth = Math.min(cashCollectedMTD, billedServicesMTD);
 
-const upcomingExpenses = sortExpensesByDate(
-  (safeData.expenses || []).filter(isUpcomingExpense)
-).slice(0, 5);
+  const projectedMonthTotal = getBillingAmountByLabel(safeData.billing, [
+    "projected month total",
+    "projected total",
+  ]);
 
- const dailyRows = sortProductivityRows(
-  safeData.dailyProductivity.filter(isProductivityDataRow)
-);
+  const remainingToCollect = Math.max(
+    billedServicesMTD - collectedForCurrentServiceMonth,
+    0
+  );
+  const collectionRate =
+    billedServicesMTD > 0
+      ? (collectedForCurrentServiceMonth / billedServicesMTD) * 100
+      : 0;
 
-const monthlyRows = sortProductivityRows(
-  safeData.monthlyProductivity.filter(isProductivityDataRow)
-);
+  const expensesMTD = sumExpensesMTD(safeData.expenses || []);
+  const netMTD = cashCollectedMTD - expensesMTD;
 
-const dailyTotals = {
-  charges: sumCharges(dailyRows),
-  visits: sumVisits(dailyRows),
-  duration: sumDurations(dailyRows),
-};
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const daysInMonth = getDaysInMonth(now);
+  const currentPace = dayOfMonth > 0 ? cashCollectedMTD / dayOfMonth : 0;
+  const projectedCollections = currentPace * daysInMonth;
+  const gapToProjection = Math.max(projectedCollections - cashCollectedMTD, 0);
 
-const monthlyTotals = {
-  charges: sumCharges(monthlyRows),
-  visits: sumVisits(monthlyRows),
-  duration: sumDurations(monthlyRows),
-};
+  const upcomingExpenses = sortExpensesByDate(
+    (safeData.expenses || []).filter(isUpcomingExpense)
+  ).slice(0, 5);
+
+  const dailyRows = sortProductivityRows(
+    safeData.dailyProductivity.filter(isProductivityDataRow)
+  );
+
+  const monthlyRows = sortProductivityRows(
+    safeData.monthlyProductivity.filter(isProductivityDataRow)
+  );
+
+  const dailyTotals = {
+    charges: sumCharges(dailyRows),
+    visits: sumVisits(dailyRows),
+    duration: sumDurations(dailyRows),
+  };
+
+  const monthlyTotals = {
+    charges: sumCharges(monthlyRows),
+    visits: sumVisits(monthlyRows),
+    duration: sumDurations(monthlyRows),
+  };
+
+  const underutilizedCapacity = (safeData.capacity || [])
+    .filter((row) => parseNumber(row.booked_percent || "") > 0)
+    .filter((row) => parseNumber(row.booked_percent || "") < 70)
+    .sort(
+      (a, b) =>
+        parseNumber(a.booked_percent || "") - parseNumber(b.booked_percent || "")
+    )
+    .slice(0, 3);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <>
       <style>{`
-.attention-card {
-  padding: 18px 20px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, #fff7f7 0%, #fffdfd 100%);
-  border: 1px solid #f3d6d6;
-  box-shadow: none;
-}
-
-.attention-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.attention-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid #f1e5e5;
-}
-
-.attention-main {
-  min-width: 0;
-}
-
-.attention-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.35;
-}
-
-.attention-meta {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #6b7280;
-  line-height: 1.4;
-}
-
-.attention-badge {
-  flex-shrink: 0;
-  padding: 7px 10px;
-  border-radius: 999px;
-  background: #fef2f2;
-  color: #991b1b;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-        
-.tasks-section-stack {
-  display: grid;
-  gap: 18px;
-}
-
-.tasks-subsection {
-  display: grid;
-  gap: 12px;
-}
-
-.tasks-subheading {
-  font-size: 12px;
-  font-weight: 800;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.task-card-modern {
-  padding: 16px 18px;
-  border: 1px solid #eceff3;
-  border-radius: 18px;
-  background: #ffffff;
-  display: grid;
-  gap: 10px;
-}
-
-.task-card-modern.completed {
-  background: #fafafa;
-  border-color: #e5e7eb;
-}
-
-.task-top-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.task-title-modern {
-  font-size: 17px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.35;
-}
-
-.task-check {
-  font-size: 16px;
-  color: #15803d;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.task-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.task-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.task-chip.owner {
-  background: #f3f4f6;
-  color: #111827;
-}
-
-.task-chip.due {
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-.task-chip.complete {
-  background: #ecfdf3;
-  color: #166534;
-}
-
-.task-note {
-  font-size: 13px;
-  line-height: 1.5;
-  color: #6b7280;
-  background: #faf7f2;
-  border: 1px solid #f3eadf;
-  border-radius: 14px;
-  padding: 10px 12px;
-}
-
-.task-note.completed {
-  background: #f8fafc;
-  border-color: #e5e7eb;
-  color: #64748b;
-}
-
-.completed-list {
-  display: grid;
-  gap: 10px;
-}
-
-.completed-task-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid #eceff3;
-  border-radius: 16px;
-  background: #fcfcfd;
-}
-
-.completed-task-main {
-  display: grid;
-  gap: 6px;
-}
-
-.completed-task-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.4;
-}
-
-.completed-task-meta {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.completed-task-date {
-  font-size: 12px;
-  font-weight: 700;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-.dashboard-shell {
+        .dashboard-shell {
           padding: 28px;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           background: linear-gradient(180deg, #f8fafc 0%, #f3f4f6 100%);
@@ -759,24 +624,17 @@ const monthlyTotals = {
         }
 
         .dashboard-grid {
-  display: grid;
-  grid-template-columns: 0.9fr 1.6fr;
-  gap: 20px;
-  align-items: start;
-}
+          display: grid;
+          grid-template-columns: 1.15fr 1.25fr;
+          gap: 20px;
+          align-items: start;
+        }
 
         .left-column,
         .right-column {
           display: grid;
           gap: 20px;
         }
-
-        .kpi-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
 
         .card {
           background: #ffffff;
@@ -790,18 +648,6 @@ const monthlyTotals = {
           transform: translateY(-2px);
           box-shadow: 0 16px 36px rgba(17,24,39,0.08);
         }
-
-        .kpi-card {
-  padding: 12px 14px;
-  min-height: 92px;
-  border-radius: 16px;
-  background: #fcfcfd;
-  border: 1px solid #eceff3;
-  box-shadow: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
 
         .section-card {
           padding: 22px;
@@ -829,182 +675,309 @@ const monthlyTotals = {
           color: #6b7280;
         }
 
-        .kpi-label {
-  font-size: 11px;
-  font-weight: 800;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-}
-
-.kpi-value {
-  font-size: clamp(22px, 2.4vw, 30px);
-  line-height: 1.05;
-  font-weight: 900;
-  margin-top: 6px;
-}
-
-        .kpi-value.red {
-          color: #b91c1c;
+        .soft-note {
+          color: #9ca3af;
+          font-size: 15px;
+          font-style: italic;
         }
 
-        .kpi-value.green {
-          color: #15803d;
-        }
-
-        .kpi-value.blue {
-          color: #1d4ed8;
-        }
-
-        .inquiry-list,
-        .task-list,
-        .employee-list {
+        .hero-grid {
           display: grid;
-          gap: 14px;
+          grid-template-columns: 1.25fr 1fr;
+          gap: 20px;
+          margin-bottom: 20px;
         }
 
-        .inquiry-card {
-          padding: 18px;
-          border: 1px solid #e5e7eb;
-          border-radius: 20px;
+        .financial-hero {
+          padding: 22px;
+          border-radius: 24px;
+          background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+          color: #ffffff;
+          display: grid;
+          gap: 18px;
+        }
+
+        .financial-hero-label {
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          opacity: 0.75;
+        }
+
+        .financial-hero-value {
+          font-size: clamp(34px, 4vw, 54px);
+          line-height: 1;
+          font-weight: 900;
+        }
+
+        .financial-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .financial-stat {
+          padding: 14px 16px;
+          border-radius: 18px;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .financial-stat-label {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: rgba(255,255,255,0.72);
+        }
+
+        .financial-stat-value {
+          margin-top: 8px;
+          font-size: 22px;
+          line-height: 1.1;
+          font-weight: 900;
+          color: #ffffff;
+        }
+
+        .strategy-card {
+          padding: 22px;
+          display: grid;
+          gap: 12px;
+          border-radius: 24px;
+          background: #ffffff;
+        }
+
+        .strategy-item {
+          padding: 14px 16px;
+          border: 1px solid #eceff3;
+          border-radius: 18px;
           background: #fcfcfd;
         }
 
-        .inquiry-top {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: flex-start;
-          flex-wrap: wrap;
-        }
-
-        .inquiry-name {
-          font-size: 30px;
+        .strategy-label {
+          font-size: 11px;
           font-weight: 800;
-          color: #111827;
-          line-height: 1.1;
-        }
-
-        .inquiry-contact {
-          margin-top: 6px;
-          font-size: 18px;
           color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
-        .status-wrap {
+        .strategy-value {
+          margin-top: 8px;
+          font-size: 24px;
+          line-height: 1.05;
+          font-weight: 900;
+          color: #111827;
+        }
+
+        .strategy-note {
+          margin-top: 5px;
+          font-size: 13px;
+          color: #6b7280;
+          line-height: 1.4;
+        }
+
+        .kpi-row {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .kpi-card {
+          padding: 14px 16px;
+          min-height: 98px;
+          border-radius: 18px;
+          background: #fcfcfd;
+          border: 1px solid #eceff3;
+          box-shadow: none;
           display: flex;
           flex-direction: column;
-          align-items: flex-end;
-          gap: 6px;
+          justify-content: center;
         }
 
-        .status-pill {
-          padding: 8px 14px;
-          border-radius: 999px;
-          font-size: 13px;
+        .kpi-label {
+          font-size: 11px;
           font-weight: 800;
-          border: 1px solid;
-          white-space: nowrap;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          line-height: 1.2;
         }
 
-        .status-detail {
+        .kpi-value {
+          font-size: clamp(22px, 2.4vw, 30px);
+          line-height: 1.05;
+          font-weight: 900;
+          margin-top: 8px;
+        }
+
+        .kpi-value.red { color: #b91c1c; }
+        .kpi-value.green { color: #15803d; }
+        .kpi-value.blue { color: #1d4ed8; }
+        .kpi-value.slate { color: #0f172a; }
+
+        .attention-card {
+          padding: 18px 20px;
+          border-radius: 22px;
+          background: linear-gradient(180deg, #fff7f7 0%, #fffdfd 100%);
+          border: 1px solid #f3d6d6;
+          box-shadow: none;
+        }
+
+        .attention-list {
+          display: grid;
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .attention-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          align-items: flex-start;
+          padding: 12px 14px;
+          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid #f1e5e5;
+        }
+
+        .attention-main {
+          min-width: 0;
+        }
+
+        .attention-title {
+          font-size: 15px;
+          font-weight: 800;
+          color: #111827;
+          line-height: 1.35;
+        }
+
+        .attention-meta {
+          margin-top: 4px;
           font-size: 13px;
           color: #6b7280;
-          text-align: right;
+          line-height: 1.4;
         }
 
-        .inquiry-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px 18px;
-          margin-top: 14px;
-          font-size: 15px;
-          color: #374151;
-        }
-
-        .inquiry-grid strong {
-          color: #111827;
-        }
-
-        .task-card {
-          padding: 16px 18px;
-          border: 1px solid #e5e7eb;
-          border-radius: 20px;
-          background: #fffdfd;
-          border-left: 5px solid #b91c1c;
-        }
-
-        .task-title {
-          font-size: 18px;
+        .attention-badge {
+          flex-shrink: 0;
+          padding: 7px 10px;
+          border-radius: 999px;
+          background: #fef2f2;
+          color: #991b1b;
+          font-size: 12px;
           font-weight: 800;
-          color: #111827;
-          line-height: 1.3;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
 
-        .task-meta {
-          margin-top: 10px;
-          display: flex;
-          flex-wrap: wrap;
+        .task-card-modern {
+          padding: 16px 18px;
+          border: 1px solid #eceff3;
+          border-radius: 18px;
+          background: #ffffff;
+          display: grid;
           gap: 10px;
         }
 
-        .tag {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        .tag.owner {
-          background: #f3f4f6;
-          color: #111827;
-        }
-
-        .tag.due {
-          background: #fef2f2;
-          color: #991b1b;
-        }
-
-        .tag.status {
-          background: #fff7ed;
-          color: #9a3412;
-        }
-
+        .tasks-section-stack,
+        .tasks-subsection,
+        .completed-list,
+        .employee-list,
+        .inquiry-list,
+        .productivity-list,
         .billing-stack {
           display: grid;
           gap: 12px;
         }
 
-        .billing-hero {
-          padding: 18px;
-          border-radius: 20px;
-          background: linear-gradient(135deg, #111827 0%, #000000 100%);
-          color: #ffffff;
+        .tasks-subheading {
+          font-size: 12px;
+          font-weight: 800;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
-        .billing-hero-label {
+        .task-top-row,
+        .completed-task-row,
+        .inquiry-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .task-title-modern,
+        .completed-task-title {
+          font-size: 17px;
+          font-weight: 800;
+          color: #111827;
+          line-height: 1.35;
+        }
+
+        .task-meta-row,
+        .employee-tags,
+        .task-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .task-chip,
+        .tag {
+          display: inline-flex;
+          align-items: center;
+          padding: 7px 12px;
+          border-radius: 999px;
           font-size: 13px;
           font-weight: 700;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          opacity: 0.85;
         }
 
-        .billing-hero-value {
-          font-size: 40px;
-          font-weight: 800;
-          margin-top: 10px;
-          line-height: 1;
+        .task-chip.owner,
+        .tag.owner {
+          background: #f3f4f6;
+          color: #111827;
         }
 
-        .billing-secondary {
+        .task-chip.due,
+        .tag.due {
+          background: #fef2f2;
+          color: #991b1b;
+        }
+
+        .task-note {
+          font-size: 13px;
+          line-height: 1.5;
+          color: #6b7280;
+          background: #faf7f2;
+          border: 1px solid #f3eadf;
+          border-radius: 14px;
+          padding: 10px 12px;
+        }
+
+        .completed-task-row {
+          padding: 14px 16px;
+          border: 1px solid #eceff3;
+          border-radius: 16px;
+          background: #fcfcfd;
+        }
+
+        .completed-task-main {
           display: grid;
-          grid-template-columns: 1fr;
-          gap: 12px;
+          gap: 6px;
+        }
+
+        .completed-task-meta,
+        .completed-task-date,
+        .status-detail,
+        .employee-role,
+        .inquiry-contact,
+        .productivity-meta {
+          font-size: 13px;
+          color: #6b7280;
         }
 
         .billing-item {
@@ -1043,155 +1016,112 @@ const monthlyTotals = {
           opacity: 0.75;
         }
 
-        .milestone-feature-name {
-          margin-top: 10px;
-          font-size: 24px;
+        .employee-card,
+        .inquiry-card,
+        .productivity-row,
+        .capacity-card {
+          padding: 18px;
+          border: 1px solid #eceff3;
+          border-radius: 20px;
+          background: #ffffff;
+        }
+
+        .employee-name,
+        .productivity-name {
+          font-size: 18px;
           font-weight: 800;
+          color: #111827;
+          line-height: 1.2;
         }
 
-        .milestone-feature-role {
-          margin-top: 4px;
-          font-size: 14px;
-          opacity: 0.8;
+        .inquiry-name {
+          font-size: 28px;
+          font-weight: 800;
+          color: #111827;
+          line-height: 1.1;
         }
 
-        .milestone-feature-event {
-          margin-top: 12px;
-          font-size: 16px;
-          font-weight: 700;
+        .status-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 6px;
         }
 
-     .employee-card {
-  padding: 18px 18px 16px;
-  border: 1px solid #eceff3;
-  border-radius: 22px;
-  background: #ffffff;
-}
+        .status-pill {
+          padding: 8px 14px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 800;
+          border: 1px solid;
+          white-space: nowrap;
+        }
 
-        .employee-name {
-  font-size: 18px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.2;
-}
-
-        .employee-role {
-  margin-top: 8px;
-  font-size: 16px;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-        .employee-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-        .soft-note {
-          color: #9ca3af;
+        .inquiry-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px 18px;
+          margin-top: 14px;
           font-size: 15px;
-          font-style: italic;
+          color: #374151;
         }
 
-.productivity-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
+        .inquiry-grid strong {
+          color: #111827;
+        }
 
-.productivity-stat {
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #fcfcfd;
-  border: 1px solid #eceff3;
-}
+        .productivity-summary {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 16px;
+        }
 
-.productivity-stat-label {
-  font-size: 11px;
-  font-weight: 800;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
+        .productivity-stat {
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: #fcfcfd;
+          border: 1px solid #eceff3;
+        }
 
-.productivity-stat-value {
-  margin-top: 8px;
-  font-size: 24px;
-  line-height: 1;
-  font-weight: 900;
-  color: #111827;
-}
+        .productivity-stat-label,
+        .productivity-metric-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
 
-.productivity-list {
-  display: grid;
-  gap: 10px;
-}
+        .productivity-stat-value {
+          margin-top: 8px;
+          font-size: 24px;
+          line-height: 1;
+          font-weight: 900;
+          color: #111827;
+        }
 
-.productivity-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(88px, 110px));
-  gap: 16px;
-  align-items: center;
-  padding: 16px 18px;
-  border: 1px solid #eceff3;
-  border-radius: 18px;
-  background: #ffffff;
-}
+        .productivity-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(88px, 110px));
+          gap: 16px;
+          align-items: center;
+        }
 
-.productivity-person {
-  min-width: 0;
-}
+        .productivity-person {
+          min-width: 0;
+        }
 
-.productivity-name {
-  font-size: 15px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.3;
-  word-break: break-word;
-}
+        .productivity-metric {
+          text-align: right;
+        }
 
-.productivity-meta {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.productivity-metric {
-  text-align: right;
-}
-
-.productivity-metric-label {
-  font-size: 10px;
-  font-weight: 800;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.productivity-metric-value {
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 800;
-  color: #111827;
-  white-space: nowrap;
-}
-
-@media (max-width: 900px) {
-  .productivity-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .productivity-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .productivity-metric {
-    text-align: left;
-        
+        .productivity-metric-value {
+          margin-top: 4px;
+          font-size: 16px;
+          font-weight: 800;
+          color: #111827;
+          white-space: nowrap;
         }
 
         .lower-grid {
@@ -1201,7 +1131,9 @@ const monthlyTotals = {
         }
 
         @media (max-width: 1200px) {
-          .dashboard-grid {
+          .hero-grid,
+          .dashboard-grid,
+          .lower-grid {
             grid-template-columns: 1fr;
           }
 
@@ -1210,65 +1142,40 @@ const monthlyTotals = {
           }
         }
 
-        .lower-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
+        @media (max-width: 900px) {
+          .financial-grid,
+          .productivity-summary,
+          .inquiry-grid {
+            grid-template-columns: 1fr;
+          }
 
-@media (max-width: 1200px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-}
+          .productivity-row {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
 
-@media (max-width: 900px) {
-  .productivity-summary {
-    grid-template-columns: 1fr;
-  }
+          .productivity-metric {
+            text-align: left;
+          }
+        }
 
-  .productivity-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
+        @media (max-width: 760px) {
+          .dashboard-shell {
+            padding: 18px;
+          }
 
-  .productivity-metric {
-    text-align: left;
-  }
-}
+          .dashboard-header {
+            align-items: flex-start;
+          }
 
-@media (max-width: 760px) {
-  .dashboard-shell {
-    padding: 18px;
-  }
+          .kpi-row {
+            grid-template-columns: 1fr;
+          }
 
-  .dashboard-header {
-    align-items: flex-start;
-  }
-
-  .kpi-row,
-  .lower-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .inquiry-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .inquiry-name {
-    font-size: 24px;
-  }
-}
-
-@media (max-width: 640px) {
-  .kpi-row {
-    grid-template-columns: 1fr;
-  }
-
-  .kpi-card {
-    min-height: 84px;
-  }
-}
+          .inquiry-name {
+            font-size: 24px;
+          }
+        }
       `}</style>
 
       <div className="dashboard-shell">
@@ -1288,11 +1195,11 @@ const monthlyTotals = {
                 color: "#0f172a",
               }}
             >
-              LKS Operations Dashboard
+              LKS Operations 
             </h1>
 
             <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
-              An overview of client inquiries, billing, tasks, and team
+              An overview of collections, strategy, operations, and team
             </p>
 
             <p style={{ marginTop: 10, color: "#9ca3af", fontSize: 14, fontWeight: 600 }}>
@@ -1301,674 +1208,688 @@ const monthlyTotals = {
           </div>
         </div>
 
-       <div className="kpi-row">
-  
-  <KpiCard label="Revenue (MTD)" value={String(collectedMTD)} accent="red" isMoney />
-  <KpiCard
-    label="Net (MTD)"
-    value={new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(netMTD)}
-    accent={netMTD >= 0 ? "green" : "red"}
-    isMoney
-  />
-<KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
-  <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
-  <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
-</div>
-<div className="dashboard-grid">
-  <div className="left-column">
-    <section className="card attention-card">
-      <div className="section-heading" style={{ marginBottom: 0 }}>
-        <div>
-          <h2 className="section-title">Needs Attention</h2>
-          <p className="section-subtitle">
-            Immediate follow-up items across tasks and inquiries
-          </p>
-        </div>
-      </div>
+        <div className="hero-grid">
+          <section className="financial-hero card">
+            <div style={{ fontSize: 13, lineHeight: 1.45, color: "rgba(255,255,255,0.78)" }}>
+              Cash received this month may include payments for prior-month services.
+              Service-month collections below are currently estimated.
+            </div>
+            <div>
+              <div className="financial-hero-label">Cash Collected (MTD)</div>
+              <div className="financial-hero-value">{formatMoney(cashCollectedMTD)}</div>
+            </div>
 
-      <div className="attention-list">
-        {[...attentionTasks, ...attentionInquiries].slice(0, 5).map((row, i) => (
-          <div key={i} className="attention-row">
-            <div className="attention-main">
-              <div className="attention-title">
-                {row.task || row.client_name || "Action item"}
+            <div className="financial-grid">
+              <div className="financial-stat">
+                <div className="financial-stat-label">Billed Services (MTD)</div>
+                <div className="financial-stat-value">{formatMoney(billedServicesMTD)}</div>
               </div>
-              <div className="attention-meta">
-                {row.status_note ||
-                  row.next_follow_up ||
-                  row.status ||
-                  "Needs review"}
+
+              <div className="financial-stat">
+                <div className="financial-stat-label">Est. Remaining</div>
+                <div className="financial-stat-value">{formatMoney(remainingToCollect)}</div>
+              </div>
+
+              <div className="financial-stat">
+                <div className="financial-stat-label">Est. Collection Rate</div>
+                <div className="financial-stat-value">{collectionRate.toFixed(0)}%</div>
+              </div>
+
+              <div className="financial-stat">
+                <div className="financial-stat-label">Net Cash (MTD)</div>
+                <div className="financial-stat-value">{formatMoney(netMTD)}</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="strategy-card card">
+            <div className="section-heading" style={{ marginBottom: 0 }}>
+              <div>
+                <h2 className="section-title">Financial Outlook</h2>
+                <p className="section-subtitle">
+                  Quick financial pacing and action-oriented visibility
+                </p>
               </div>
             </div>
 
-            <div className="attention-badge">Action</div>
-          </div>
-        ))}
+            <div className="strategy-item">
+              <div className="strategy-label">Cash Pace</div>
+              <div className="strategy-value">{formatMoney(currentPace)}/day</div>
+              <div className="strategy-note">
+                Based on collections through day {dayOfMonth} of {daysInMonth}
+              </div>
+            </div>
 
-        {!attentionTasks.length && !attentionInquiries.length ? (
-          <div className="soft-note">No urgent items flagged right now.</div>
-        ) : null}
-      </div>
-    </section>
+            <div className="strategy-item">
+              <div className="strategy-label">Projected Cash This Month</div>
+              <div className="strategy-value">
+                {formatMoney(projectedMonthTotal || projectedCollections)}
+              </div>
+              <div className="strategy-note">
+                {projectedMonthTotal > 0
+                  ? "Using dashboard-provided projected total"
+                  : "Projected from current collection pace"}
+              </div>
+            </div>
 
-    <section className="card section-card">
-      <div className="section-heading">
-        <div>
-          <h2 className="section-title">Open Tasks</h2>
-          <p className="section-subtitle">
-            Current action items and recent completions
-          </p>
+            <div className="strategy-item">
+              <div className="strategy-label">Remaining Billed Opportunity</div>
+              <div className="strategy-value">{formatMoney(gapToProjection)}</div>
+              <div className="strategy-note">
+                Based on billed services month-to-date, not true claim aging by service month
+              </div>
+            </div>
+          </section>
         </div>
-      </div>
 
-      <div className="tasks-section-stack">
-        <div className="tasks-subsection">
-          <div className="tasks-subheading">Active Tasks</div>
+        <div className="kpi-row">
+          <KpiCard label="Expenses (MTD)" value={formatMoney(expensesMTD)} accent="red" />
+          <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
+          <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
+          <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
+        </div>
 
-          {openTasks.length ? (
-            openTasks.map((row, i) => (
-              <div key={i} className="task-card-modern">
-                <div className="task-top-row">
-                  <div className="task-title-modern">
-                    {row.task || "Untitled task"}
+        <div className="dashboard-grid">
+          <div className="left-column">
+            <section className="card attention-card">
+              <div className="section-heading" style={{ marginBottom: 0 }}>
+                <div>
+                  <h2 className="section-title">What Needs Attention Today</h2>
+                  <p className="section-subtitle">
+                    Revenue, follow-up, and utilization items that may need action
+                  </p>
+                </div>
+              </div>
+
+              <div className="attention-list">
+                {remainingToCollect > 0 ? (
+                  <div className="attention-row">
+                    <div className="attention-main">
+                      <div className="attention-title">Current service month still has estimated collection remaining</div>
+                      <div className="attention-meta">
+                        {formatMoney(remainingToCollect)} estimated remaining based on billed services month-to-date
+                      </div>
+                    </div>
+                    <div className="attention-badge">Revenue</div>
                   </div>
-                </div>
+                ) : null}
 
-                <div className="task-meta-row">
-                  {row.owner ? (
-                    <span className="task-chip owner">Owner: {row.owner}</span>
-                  ) : null}
+                {underutilizedCapacity.map((row, i) => (
+                  <div key={`${row.therapist}-${i}`} className="attention-row">
+                    <div className="attention-main">
+                      <div className="attention-title">
+                        {row.therapist || "Therapist"} under 70% booked
+                      </div>
+                      <div className="attention-meta">
+                        {[row.booked_percent ? `${row.booked_percent}% booked` : "", row.open_slots ? `Open slots: ${row.open_slots}` : ""]
+                          .filter(Boolean)
+                          .join(" • ")}
+                      </div>
+                    </div>
+                    <div className="attention-badge">Capacity</div>
+                  </div>
+                ))}
 
-                  {formatTaskDue(row.due || "") ? (
-                    <span className="task-chip due">
-                      Due: {formatTaskDue(row.due || "")}
-                    </span>
-                  ) : null}
-                </div>
+                {[...attentionTasks, ...attentionInquiries].slice(0, 4).map((row, i) => (
+                  <div key={i} className="attention-row">
+                    <div className="attention-main">
+                      <div className="attention-title">
+                        {row.task || row.client_name || "Action item"}
+                      </div>
+                      <div className="attention-meta">
+                        {row.status_note || row.next_follow_up || row.status || "Needs review"}
+                      </div>
+                    </div>
+                    <div className="attention-badge">Action</div>
+                  </div>
+                ))}
 
-                {getTaskNote(row) ? (
-                  <div className="task-note">{getTaskNote(row)}</div>
+                {remainingToCollect <= 0 &&
+                !underutilizedCapacity.length &&
+                !attentionTasks.length &&
+                !attentionInquiries.length ? (
+                  <div className="soft-note">No urgent items flagged right now.</div>
                 ) : null}
               </div>
-            ))
-          ) : (
-            <div className="soft-note">No active tasks found.</div>
-          )}
-        </div>
+            </section>
 
-        <div className="tasks-subsection">
-          <div className="tasks-subheading">Recently Completed</div>
-
-          {completedTasks.length ? (
-            <div className="completed-list">
-              {completedTasks.slice(0, 4).map((row, i) => (
-                <div key={i} className="completed-task-row">
-                  <div className="completed-task-main">
-                    <div className="completed-task-title">
-                      ✓ {row.task || "Completed task"}
-                    </div>
-
-                    <div className="completed-task-meta">
-                      {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </div>
-                  </div>
-
-                  <div className="completed-task-date">
-                    {row.completed_date || "Completed"}
-                  </div>
+            <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Financial Snapshot</h2>
+                  <p className="section-subtitle">
+                    Month-to-date collections, expenses, and upcoming obligations
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="soft-note">No completed tasks yet.</div>
-          )}
-        </div>
-      </div>
-    </section>
+              </div>
 
-<section className="card section-card">
-      <div className="section-heading">
-        <div>
-          <h2 className="section-title">Financial Snapshot</h2>
-          <p className="section-subtitle">
-            Month-to-date collections, expenses, and upcoming obligations
-          </p>
-        </div>
-      </div>
+              <div className="billing-stack">
+                <div className="billing-item">
+                  <div className="billing-item-label">Cash Collected (MTD)</div>
+                  <div className="billing-item-value">{formatMoney(cashCollectedMTD)}</div>
+                </div>
 
-      <div className="billing-stack">
-        <div className="billing-hero">
-          <div className="billing-hero-label">Net (MTD)</div>
-          <div className="billing-hero-value">
-            {new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency: "USD",
-              maximumFractionDigits: 0,
-            }).format(netMTD)}
-          </div>
-        </div>
+                <div className="billing-item">
+                  <div className="billing-item-label">Billed Services (MTD)</div>
+                  <div className="billing-item-value">{formatMoney(billedServicesMTD)}</div>
+                </div>
 
-        <div className="billing-secondary">
-          <div className="billing-item">
-            <div className="billing-item-label">Collected (MTD)</div>
-            <div className="billing-item-value">{collectedMTD}</div>
-          </div>
+                <div className="billing-item">
+                  <div className="billing-item-label">Estimated Remaining for Current Service Month</div>
+                  <div className="billing-item-value">{formatMoney(remainingToCollect)}</div>
+                </div>
 
-          <div className="billing-item">
-            <div className="billing-item-label">Expenses (MTD)</div>
-            <div className="billing-item-value">
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                maximumFractionDigits: 0,
-              }).format(expensesMTD)}
-            </div>
-          </div>
+                <div className="billing-item">
+                  <div className="billing-item-label">Expenses (MTD)</div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280", lineHeight: 1.4 }}>
+                    Cash collections shown above may include prior month services.
+                  </div>
+                  <div className="billing-item-value">{formatMoney(expensesMTD)}</div>
+                </div>
 
-          <div className="billing-item">
-            <div className="billing-item-label">Projected Month Total</div>
-            <div className="billing-item-value">
-              {billingCards.find((card) =>
-                normalizeStatus(card.label).includes("projected month total")
-              )?.value || "—"}
-            </div>
-          </div>
+                <div className="billing-item" style={{ background: "#fafafa" }}>
+                  <div className="billing-item-label" style={{ marginBottom: 10 }}>
+                    Upcoming Expenses
+                  </div>
 
-          <div className="billing-item">
-            <div className="billing-item-label">Last Month (Collected)</div>
-            <div className="billing-item-value">{lastMonthCollected}</div>
-          </div>
-        </div>
+                  {upcomingExpenses.length ? (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {upcomingExpenses.map((row, i) => {
+                        const dueDate = parseMonthDayYear(row.due_date || "");
+                        const isSoon =
+                          dueDate && dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
 
-        <div className="billing-item" style={{ background: "#fafafa" }}>
-          <div className="billing-item-label" style={{ marginBottom: 10 }}>
-            Upcoming Expenses
-          </div>
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              alignItems: "center",
+                              borderBottom:
+                                i !== upcomingExpenses.length - 1 ? "1px solid #e5e7eb" : "none",
+                              paddingBottom: i !== upcomingExpenses.length - 1 ? 10 : 0,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 700, color: "#111827" }}>
+                                {row.expense_name || "Expense"}
+                              </div>
+                              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
+                                {[row.category, row.due_date].filter(Boolean).join(" • ")}
+                              </div>
+                            </div>
 
-          {upcomingExpenses.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {upcomingExpenses.map((row, i) => {
-                const dueDate = parseMonthDayYear(row.due_date || "");
-                const isSoon =
-                  dueDate &&
-                  dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
+                            <div
+                              style={{
+                                fontWeight: 800,
+                                color: isSoon ? "#b91c1c" : "#991b1b",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {row.amount ? formatMoney(parseNumber(row.amount)) : "—"}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="soft-note">No upcoming expenses listed.</div>
+                  )}
+                </div>
+              </div>
+            </section>
 
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      alignItems: "center",
-                      borderBottom:
-                        i !== upcomingExpenses.length - 1
-                          ? "1px solid #e5e7eb"
-                          : "none",
-                      paddingBottom:
-                        i !== upcomingExpenses.length - 1 ? 10 : 0,
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700, color: "#111827" }}>
-                        {row.expense_name || "Expense"}
+            <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Open Tasks</h2>
+                  <p className="section-subtitle">
+                    Current action items and recent completions
+                  </p>
+                </div>
+              </div>
+
+              <div className="tasks-section-stack">
+                <div className="tasks-subsection">
+                  <div className="tasks-subheading">Active Tasks</div>
+
+                  {openTasks.length ? (
+                    openTasks.map((row, i) => (
+                      <div key={i} className="task-card-modern">
+                        <div className="task-top-row">
+                          <div className="task-title-modern">{row.task || "Untitled task"}</div>
+                        </div>
+
+                        <div className="task-meta-row">
+                          {row.owner ? (
+                            <span className="task-chip owner">Owner: {row.owner}</span>
+                          ) : null}
+
+                          {formatTaskDue(row.due || "") ? (
+                            <span className="task-chip due">
+                              Due: {formatTaskDue(row.due || "")}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {getTaskNote(row) ? <div className="task-note">{getTaskNote(row)}</div> : null}
                       </div>
+                    ))
+                  ) : (
+                    <div className="soft-note">No active tasks found.</div>
+                  )}
+                </div>
+
+                <div className="tasks-subsection">
+                  <div className="tasks-subheading">Recently Completed</div>
+
+                  {completedTasks.length ? (
+                    <div className="completed-list">
+                      {completedTasks.slice(0, 4).map((row, i) => (
+                        <div key={i} className="completed-task-row">
+                          <div className="completed-task-main">
+                            <div className="completed-task-title">✓ {row.task || "Completed task"}</div>
+                            <div className="completed-task-meta">
+                              {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
+                                .filter(Boolean)
+                                .join(" • ")}
+                            </div>
+                          </div>
+
+                          <div className="completed-task-date">
+                            {row.completed_date || "Completed"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="soft-note">No completed tasks yet.</div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Team & Milestones</h2>
+                  <p className="section-subtitle">Upcoming celebrations and key dates</p>
+                </div>
+              </div>
+
+              {upcomingEmployeeEvents.length ? (
+                <div className="milestone-feature">
+                  <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
+
+                  <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                    {upcomingEmployeeEvents.map((event, i) => (
                       <div
+                        key={`${event.employee}-${event.type}-${i}`}
                         style={{
-                          fontSize: 13,
-                          color: "#6b7280",
-                          marginTop: 2,
+                          paddingBottom: i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
+                          borderBottom:
+                            i !== upcomingEmployeeEvents.length - 1 ? "1px solid #334155" : "none",
                         }}
                       >
-                        {[row.category, row.due_date].filter(Boolean).join(" • ")}
+                        <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                          {event.employee}
+                        </div>
+
+                        <div style={{ marginTop: 2, fontSize: 14, color: "#cbd5e1" }}>
+                          {event.role}
+                        </div>
+
+                        <div style={{ marginTop: 8, fontSize: 15, fontWeight: 600, color: "#f8fafc" }}>
+                          {event.type === "birthday"
+                            ? `🧁 Birthday — ${event.label}`
+                            : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {safeData.employees.length ? (
+                <div className="employee-list">
+                  {safeData.employees.map((row, i) => {
+                    const years = getWorkAnniversaryYears(row.work_anniversary);
+
+                    return (
+                      <div key={i} className="employee-card">
+                        <div className="employee-name">{row.employee || "Unknown Employee"}</div>
+                        <div className="employee-role">{row.role || ""}</div>
+
+                        <div className="employee-tags">
+                          {row.birthday ? (
+                            <div
+                              className="tag"
+                              style={{
+                                background: "#e9a9bf",
+                                color: "#fff",
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                fontSize: 15,
+                                fontWeight: 700,
+                              }}
+                            >
+                              🧁 {formatMonthDayOnly(row.birthday)}
+                            </div>
+                          ) : null}
+
+                          {row.work_anniversary ? (
+                            <div
+                              className="tag"
+                              style={{
+                                background: "#f8fafc",
+                                border: ".5px solid #f1d5db",
+                                color: "#111827",
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              <span style={{ color: "#e9a9bf" }}>🎉</span>&nbsp;
+                              {formatAnniversaryFull(row.work_anniversary)} — {formatYearsLabel(years)}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {row.license || row.npi ? (
+                          <div
+                            style={{
+                              marginTop: 16,
+                              fontSize: 15,
+                              color: "#111827",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {row.license ? <span>LICENSE: {row.license}</span> : null}
+                            {row.license && row.npi ? (
+                              <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
+                            ) : null}
+                            {row.npi ? <span>NPI: {row.npi}</span> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="soft-note">No employee data found.</div>
+              )}
+            </section>
+          </div>
+
+          <div className="right-column">
+            <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Inquiry Pipeline</h2>
+                  <p className="section-subtitle">
+                    Active inquiries, follow-up flow, and current status
+                  </p>
+                </div>
+              </div>
+
+              {safeData.calls.length ? (
+                <div className="inquiry-list">
+                  {safeData.calls.slice(0, 6).map((row, i) => {
+                    const colors = statusColor(row.status || "");
+                    return (
+                      <div key={i} className="inquiry-card">
+                        <div className="inquiry-top">
+                          <div>
+                            <div className="inquiry-name">{row.client_name || "New Inquiry"}</div>
+                            <div className="inquiry-contact">
+                              {row.contact_name || row.parent_name || "No contact listed"}
+                            </div>
+                          </div>
+
+                          {row.status ? (
+                            <div className="status-wrap">
+                              <span
+                                className="status-pill"
+                                style={{
+                                  background: colors.bg,
+                                  color: colors.text,
+                                  borderColor: colors.border,
+                                }}
+                              >
+                                {getStatusLabel(row.status)}
+                              </span>
+
+                              {getStatusDetail(row.status) ? (
+                                <div className="status-detail">{getStatusDetail(row.status)}</div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="inquiry-grid">
+                          {row.call_date ? (
+                            <div>
+                              <strong>Date:</strong> {row.call_date}
+                            </div>
+                          ) : null}
+                          {row.age ? (
+                            <div>
+                              <strong>Age:</strong> {row.age}
+                            </div>
+                          ) : null}
+                          {row.service_needed ? (
+                            <div>
+                              <strong>Service:</strong> {row.service_needed}
+                            </div>
+                          ) : null}
+                          {row.assigned_to ? (
+                            <div>
+                              <strong>Assigned:</strong> {row.assigned_to}
+                            </div>
+                          ) : null}
+                          {row["source (referral, google, etc.)"] ? (
+                            <div>
+                              <strong>Source:</strong> {row["source (referral, google, etc.)"]}
+                            </div>
+                          ) : null}
+                          {row.next_follow_up ? (
+                            <div>
+                              <strong>Follow-Up:</strong> {row.next_follow_up}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="soft-note">No inquiries found.</div>
+              )}
+            </section>
+
+            <div className="lower-grid">
+              <section className="card section-card">
+                <div className="section-heading">
+                  <div>
+                    <h2 className="section-title">Daily Productivity</h2>
+                    <p className="section-subtitle">Today’s therapist totals</p>
+                  </div>
+                </div>
+
+                {dailyRows.length ? (
+                  <>
+                    <div className="productivity-summary">
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Charges</div>
+                        <div className="productivity-stat-value">{formatMoney(dailyTotals.charges)}</div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Visits</div>
+                        <div className="productivity-stat-value">{dailyTotals.visits}</div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Duration</div>
+                        <div className="productivity-stat-value">{dailyTotals.duration}</div>
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        color: isSoon ? "#b91c1c" : "#991b1b",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {row.amount
-                        ? new Intl.NumberFormat("en-US", {
-                            style: "currency",
-                            currency: "USD",
-                            maximumFractionDigits: 0,
-                          }).format(parseNumber(row.amount))
-                        : "—"}
+                    <div className="productivity-list">
+                      {dailyRows.map((row, i) => (
+                        <div key={i} className="productivity-row">
+                          <div className="productivity-person">
+                            <div className="productivity-name">{row.therapist || "Unknown Therapist"}</div>
+                            <div className="productivity-meta">
+                              {[row.service, row.location].filter(Boolean).join(" • ")}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Duration</div>
+                            <div className="productivity-metric-value">{row.duration || "—"}</div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Charges</div>
+                            <div className="productivity-metric-value">
+                              {row.charges ? formatMoney(parseNumber(row.charges)) : "—"}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Visits</div>
+                            <div className="productivity-metric-value">{row.visits || "—"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 50,
+            padding: "12px 16px",
+            borderRadius: 999,
+            border: "none",
+            background: "#111827",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 14,
+            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
+            cursor: "pointer",
+          }}
+        >
+          ↑ Top
+        </button>
+      )}
+      </div>
+    </>
+                ) : (
+                  <div className="soft-note">No daily productivity data found.</div>
+                )}
+              </section>
+
+              <section className="card section-card">
+                <div className="section-heading">
+                  <div>
+                    <h2 className="section-title">Monthly Productivity</h2>
+                    <p className="section-subtitle">Month-to-date therapist totals</p>
+                  </div>
+                </div>
+
+                {monthlyRows.length ? (
+                  <>
+                    <div className="productivity-summary">
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Charges</div>
+                        <div className="productivity-stat-value">{formatMoney(monthlyTotals.charges)}</div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Visits</div>
+                        <div className="productivity-stat-value">{monthlyTotals.visits}</div>
+                      </div>
+
+                      <div className="productivity-stat">
+                        <div className="productivity-stat-label">Duration</div>
+                        <div className="productivity-stat-value">{monthlyTotals.duration}</div>
+                      </div>
                     </div>
+
+                    <div className="productivity-list">
+                      {monthlyRows.map((row, i) => (
+                        <div key={i} className="productivity-row">
+                          <div className="productivity-person">
+                            <div className="productivity-name">{row.therapist || "Unknown Therapist"}</div>
+                            <div className="productivity-meta">
+                              {[row.service, row.location].filter(Boolean).join(" • ")}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Duration</div>
+                            <div className="productivity-metric-value">{row.duration || "—"}</div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Charges</div>
+                            <div className="productivity-metric-value">
+                              {row.charges ? formatMoney(parseNumber(row.charges)) : "—"}
+                            </div>
+                          </div>
+
+                          <div className="productivity-metric">
+                            <div className="productivity-metric-label">Visits</div>
+                            <div className="productivity-metric-value">{row.visits || "—"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="soft-note">No monthly productivity data found.</div>
+                )}
+              </section>
+
+              <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
+                <div className="section-heading">
+                  <div>
+                    <h2 className="section-title">Capacity, Cancellations & Rescheduling</h2>
+                    <p className="section-subtitle">Scheduling and therapist availability</p>
                   </div>
-                );
-              })}
+                </div>
+
+                {safeData.capacity.length ? (
+                  <div className="employee-list">
+                    {safeData.capacity.slice(0, 4).map((row, i) => (
+                      <div key={i} className="capacity-card">
+                        <div className="employee-name">{row.therapist || "Unknown Therapist"}</div>
+                        <div className="employee-role">
+                          {[
+                            row.booked_percent ? `${row.booked_percent}% booked` : "",
+                            row.open_slots ? `Open slots: ${row.open_slots}` : "",
+                            row.revenue_gap ? `Gap: ${formatValue("revenue_gap", row.revenue_gap)}` : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" • ")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="soft-note">No capacity data found.</div>
+                )}
+              </section>
             </div>
-          ) : (
-            <div className="soft-note">No upcoming expenses listed.</div>
-          )}
+          </div>
         </div>
       </div>
-    </section>
-<section className="card section-card">
-  <div className="section-heading">
-    <div>
-      <h2 className="section-title">Team & Milestones</h2>
-      <p className="section-subtitle">Upcoming celebrations and key dates</p>
-    </div>
-  </div>
-
-  {upcomingEmployeeEvents.length ? (
-    <div className="milestone-feature">
-      <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
-
-      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        {upcomingEmployeeEvents.map((event, i) => (
-          <div
-            key={`${event.employee}-${event.type}-${i}`}
-            style={{
-              paddingBottom: i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
-              borderBottom:
-                i !== upcomingEmployeeEvents.length - 1
-                  ? "1px solid #e5e7eb"
-                  : "none",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#f4ecea",
-              }}
-            >
-              {event.employee}
-            </div>
-
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: 14,
-                color: "#f59fb9",
-              }}
-            >
-              {event.role}
-            </div>
-
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 15,
-                fontWeight: 600,
-                color: "#f4ecea",
-              }}
-            >
-              {event.type === "birthday"
-                ? `🧁 Birthday — ${event.label}`
-                : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  ) : null}
-
-  {safeData.employees.length ? (
-    <div className="employee-list">
-      {safeData.employees.map((row, i) => {
-        const years = getWorkAnniversaryYears(row.work_anniversary);
-
-        return (
-          <div key={i} className="employee-card">
-            <div className="employee-name">
-              {row.employee || "Unknown Employee"}
-            </div>
-
-            <div className="employee-role">{row.role || ""}</div>
-
-            <div className="employee-tags">
-              {row.birthday ? (
-                <div
-                  className="tag"
-                  style={{
-                    background: "#e9a9bf",
-                    color: "#fff",
-                    padding: "10px 16px",
-                    borderRadius: 999,
-                    fontSize: 15,
-                    fontWeight: 700,
-                  }}
-                >
-                  🧁 {formatMonthDayOnly(row.birthday)}
-                </div>
-              ) : null}
-
-              {row.work_anniversary ? (
-                <div
-                  className="tag"
-                  style={{
-                    background: "#f8fafc",
-                    border: ".5px solid #f1d5db",
-                    color: "#111827",
-                    padding: "10px 16px",
-                    borderRadius: 999,
-                    fontSize: 15,
-                    fontWeight: 500,
-                  }}
-                >
-                  <span style={{ color: "#e9a9bf" }}>🎉</span>{" "}
-                  {formatAnniversaryFull(row.work_anniversary)} —{" "}
-                  {formatYearsLabel(years)}
-                </div>
-              ) : null}
-            </div>
-
-            {row.license || row.npi ? (
-              <div
-                style={{
-                  marginTop: 16,
-                  fontSize: 15,
-                  color: "#111827",
-                  fontWeight: 500,
-                }}
-              >
-                {row.license ? <span>LICENSE: {row.license}</span> : null}
-
-                {row.license && row.npi ? (
-                  <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
-                ) : null}
-
-                {row.npi ? <span>NPI: {row.npi}</span> : null}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  ) : (
-    <div className="soft-note">No employee data found.</div>
-  )}
-</section>
-
-</div>
-  <div className="right-column">
-  <section className="card section-card">
-    <div className="section-heading">
-      <div>
-        <h2 className="section-title">Inquiry Pipeline</h2>
-        <p className="section-subtitle">
-          Active inquiries, follow-up flow, and current status
-        </p>
-      </div>
-    </div>
-
-    {safeData.calls.length ? (
-      <div className="inquiry-list">
-        {safeData.calls.slice(0, 6).map((row, i) => {
-          const colors = statusColor(row.status || "");
-          return (
-            <div key={i} className="inquiry-card">
-              <div className="inquiry-top">
-                <div>
-                  <div className="inquiry-name">
-                    {row.client_name || "New Inquiry"}
-                  </div>
-                  <div className="inquiry-contact">
-                    {row.contact_name || row.parent_name || "No contact listed"}
-                  </div>
-                </div>
-
-                {row.status ? (
-                  <div className="status-wrap">
-                    <span
-                      className="status-pill"
-                      style={{
-                        background: colors.bg,
-                        color: colors.text,
-                        borderColor: colors.border,
-                      }}
-                    >
-                      {getStatusLabel(row.status)}
-                    </span>
-
-                    {getStatusDetail(row.status) ? (
-                      <div className="status-detail">{getStatusDetail(row.status)}</div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="inquiry-grid">
-                {row.call_date ? (
-                  <div>
-                    <strong>Date:</strong> {row.call_date}
-                  </div>
-                ) : null}
-                {row.age ? (
-                  <div>
-                    <strong>Age:</strong> {row.age}
-                  </div>
-                ) : null}
-                {row.service_needed ? (
-                  <div>
-                    <strong>Service:</strong> {row.service_needed}
-                  </div>
-                ) : null}
-                {row.assigned_to ? (
-                  <div>
-                    <strong>Assigned:</strong> {row.assigned_to}
-                  </div>
-                ) : null}
-                {row["source (referral, google, etc.)"] ? (
-                  <div>
-                    <strong>Source:</strong> {row["source (referral, google, etc.)"]}
-                  </div>
-                ) : null}
-                {row.next_follow_up ? (
-                  <div>
-                    <strong>Follow-Up:</strong> {row.next_follow_up}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    ) : (
-      <div className="soft-note">No inquiries found.</div>
-    )}
-  </section>
-
-  <div className="lower-grid">
-  <section className="card section-card">
-    <div className="section-heading">
-      <div>
-        <h2 className="section-title">Daily Productivity</h2>
-        <p className="section-subtitle">Today’s therapist totals</p>
-      </div>
-    </div>
-
-    {dailyRows.length ? (
-      <>
-        <div className="productivity-summary">
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Charges</div>
-            <div className="productivity-stat-value">
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                maximumFractionDigits: 0,
-              }).format(dailyTotals.charges)}
-            </div>
-          </div>
-
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Visits</div>
-            <div className="productivity-stat-value">{dailyTotals.visits}</div>
-          </div>
-
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Duration</div>
-            <div className="productivity-stat-value">{dailyTotals.duration}</div>
-          </div>
-        </div>
-
-        <div className="productivity-list">
-          {dailyRows.map((row, i) => (
-            <div key={i} className="productivity-row">
-              <div className="productivity-person">
-                <div className="productivity-name">
-                  {row.therapist || "Unknown Therapist"}
-                </div>
-                <div className="productivity-meta">
-                  {[row.service, row.location].filter(Boolean).join(" • ")}
-                </div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Duration</div>
-                <div className="productivity-metric-value">{row.duration || "—"}</div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Charges</div>
-                <div className="productivity-metric-value">
-                  {row.charges
-                    ? new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      }).format(parseNumber(row.charges))
-                    : "—"}
-                </div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Visits</div>
-                <div className="productivity-metric-value">{row.visits || "—"}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>
-    ) : (
-      <div className="soft-note">No daily productivity data found.</div>
-    )}
-  </section>
-
-  <section className="card section-card">
-    <div className="section-heading">
-      <div>
-        <h2 className="section-title">Monthly Productivity</h2>
-        <p className="section-subtitle">Month-to-date therapist totals</p>
-      </div>
-    </div>
-
-    {monthlyRows.length ? (
-      <>
-        <div className="productivity-summary">
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Charges</div>
-            <div className="productivity-stat-value">
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                maximumFractionDigits: 0,
-              }).format(monthlyTotals.charges)}
-            </div>
-          </div>
-
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Visits</div>
-            <div className="productivity-stat-value">{monthlyTotals.visits}</div>
-          </div>
-
-          <div className="productivity-stat">
-            <div className="productivity-stat-label">Duration</div>
-            <div className="productivity-stat-value">{monthlyTotals.duration}</div>
-          </div>
-        </div>
-
-        <div className="productivity-list">
-          {monthlyRows.map((row, i) => (
-            <div key={i} className="productivity-row">
-              <div className="productivity-person">
-                <div className="productivity-name">
-                  {row.therapist || "Unknown Therapist"}
-                </div>
-                <div className="productivity-meta">
-                  {[row.service, row.location].filter(Boolean).join(" • ")}
-                </div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Duration</div>
-                <div className="productivity-metric-value">{row.duration || "—"}</div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Charges</div>
-                <div className="productivity-metric-value">
-                  {row.charges ? formatValue("charges", row.charges) : "—"}
-                </div>
-              </div>
-
-              <div className="productivity-metric">
-                <div className="productivity-metric-label">Visits</div>
-                <div className="productivity-metric-value">{row.visits || "—"}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>
-    ) : (
-      <div className="soft-note">No monthly productivity data found.</div>
-    )}
-  </section>
-
-  <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
-    <div className="section-heading">
-      <div>
-        <h2 className="section-title">Capacity, Cancellations & Rescheduling</h2>
-        <p className="section-subtitle">Scheduling and therapist availability</p>
-      </div>
-    </div>
-
-    {safeData.capacity.length ? (
-      <div className="employee-list">
-        {safeData.capacity.slice(0, 4).map((row, i) => (
-          <div key={i} className="employee-card">
-            <div className="employee-name">{row.therapist || "Unknown Therapist"}</div>
-            <div className="employee-role">
-              {[
-                row.booked_percent ? `${row.booked_percent}% booked` : "",
-                row.open_slots ? `Open slots: ${row.open_slots}` : "",
-                row.revenue_gap
-                  ? `Gap: ${formatValue("revenue_gap", row.revenue_gap)}`
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" • ")}
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="soft-note">No capacity data found.</div>
-    )}
-  </section>
-</div>
-
-  
-  </div>
-
-
-</div>
-</div>
     </>
   );
 }
@@ -1977,22 +1898,17 @@ function KpiCard({
   label,
   value,
   accent,
-  isMoney = false,
 }: {
   label: string;
   value: string;
-  accent: "red" | "green" | "blue";
-  isMoney?: boolean;
+  accent: "red" | "green" | "blue" | "slate";
 }) {
-  const accentClass =
-    accent === "red" ? "red" : accent === "green" ? "green" : "blue";
-
   return (
     <div className="card kpi-card">
       <div className="kpi-label">{label}</div>
-      <div className={`kpi-value ${accentClass}`}>
-        {isMoney ? value : value}
-      </div>
+      <div className={`kpi-value ${accent}`}>{value}</div>
     </div>
   );
 }
+
+
