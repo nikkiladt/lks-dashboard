@@ -1195,7 +1195,7 @@ export default function DashboardClient() {
                 color: "#0f172a",
               }}
             >
-              LKS Operations 
+              LKS and Associates 
             </h1>
 
             <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
