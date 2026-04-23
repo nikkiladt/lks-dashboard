@@ -588,7 +588,15 @@ export default function DashboardClient() {
     .slice(0, 3);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const root = document.scrollingElement || document.documentElement || document.body;
+
+    try {
+      root.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      root.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
   };
 
   return (
@@ -1195,7 +1203,7 @@ export default function DashboardClient() {
                 color: "#0f172a",
               }}
             >
-              LKS and Associates 
+              LKS Operations Dashboard
             </h1>
 
             <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
@@ -1768,7 +1776,12 @@ export default function DashboardClient() {
                       ))}
                     {showScrollTop && (
         <button
-          onClick={scrollToTop}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            scrollToTop();
+          }}
           style={{
             position: "fixed",
             bottom: 20,
@@ -1910,5 +1923,3 @@ function KpiCard({
     </div>
   );
 }
-
-
