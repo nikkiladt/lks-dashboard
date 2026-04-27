@@ -584,9 +584,16 @@ const collectionWindowText = `${nextMonthName} 1–10`;
   const projectedCollections = currentPace * daysInMonth;
   const gapToProjection = Math.max(projectedCollections - cashCollectedMTD, 0);
 
-  const upcomingExpenses = sortExpensesByDate(
-    (safeData.expenses || []).filter(isUpcomingExpense)
-  ).slice(0, 5);
+  const allUpcomingExpenses = sortExpensesByDate(
+  (safeData.expenses || []).filter(isUpcomingExpense)
+);
+
+const upcomingExpensesTotal = allUpcomingExpenses.reduce(
+  (sum, row) => sum + parseNumber(row.amount || ""),
+  0
+);
+
+const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
 
   const dailyRows = sortProductivityRows(
     safeData.dailyProductivity.filter(isProductivityDataRow)
@@ -1434,9 +1441,7 @@ const collectionWindowText = `${nextMonthName} 1–10`;
               LKS and Associates
             </h1>
 
-            <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
-              An overview of collections, strategy, operations, and team
-            </p>
+          
 
             <p style={{ marginTop: 10, color: "#9ca3af", fontSize: 14, fontWeight: 600 }}>
               Last updated: {new Date().toLocaleString()}
@@ -1464,9 +1469,15 @@ const collectionWindowText = `${nextMonthName} 1–10`;
             </div>
 
             <div className="financial-stat light">
-              <div className="financial-stat-label">Expenses</div>
-              <div className="financial-stat-value">{formatMoney(expensesMTD)}</div>
-            </div>
+  <div className="financial-stat-label">Expenses MTD</div>
+  <div className="financial-stat-value">{formatMoney(expensesMTD)}</div>
+</div>
+
+<div className="financial-stat light">
+  <div className="financial-stat-label">Upcoming Expenses</div>
+  <div className="financial-stat-value">{formatMoney(upcomingExpensesTotal)}</div>
+  <div className="financial-stat-note">Next 30 days / pending bills</div>
+</div>
 
             <div className="financial-stat light">
               <div className="financial-stat-label">Cash Pace</div>
