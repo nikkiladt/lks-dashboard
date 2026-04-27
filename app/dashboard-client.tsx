@@ -574,6 +574,9 @@ const [showDaily, setShowDaily] = useState(false);
 
   const now = new Date();
   const dayOfMonth = now.getDate();
+const currentMonthName = now.toLocaleString("en-US", {
+  month: "long",
+});
 const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 const nextMonthName = nextMonthDate.toLocaleString("en-US", {
   month: "long",
@@ -1469,12 +1472,16 @@ const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
 
           <div className="financial-overview-grid">
             <div className="financial-stat light">
-              <div className="financial-stat-label">Billed Services</div>
+              <div className="financial-stat-label">
+  {currentMonthName} Billed Services MTD
+</div>
               <div className="financial-stat-value">{formatMoney(billedServicesMTD)}</div>
             </div>
 
             <div className="financial-stat light">
-  <div className="financial-stat-label">Expenses MTD</div>
+  <div className="financial-stat-label">
+  {currentMonthName} Expenses
+</div>
   <div className="financial-stat-value">{formatMoney(expensesMTD)}</div>
 </div>
 
@@ -1508,7 +1515,7 @@ const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
 </div>
 
             <div className="financial-stat light">
-              <div className="financial-stat-label">Projected Gap</div>
+              <div className="financial-stat-label">Expected Additional Cash MTD</div>
               <div className="financial-stat-value">{formatMoney(gapToProjection)}</div>
             </div>
 
