@@ -445,6 +445,8 @@ export default function DashboardClient() {
   const [loadError, setLoadError] = useState("");
   const hasLoaded = useRef(false);
 
+const [showDaily, setShowDaily] = useState(false);
+
   useEffect(() => {
     if (hasLoaded.current) return;
     hasLoaded.current = true;
@@ -492,7 +494,31 @@ export default function DashboardClient() {
   );
 
   const attentionTasks = openTasks.filter(rowNeedsAttention).slice(0, 3);
-  const attentionInquiries = safeData.calls.filter(inquiryNeedsAttention).slice(0, 3);
+
+  const activeInquiries = safeData.calls
+    .filter((row) => {
+      const completed = isCompletedAssessment(row.status || "");
+      const hasRecommendations = Boolean(
+        (
+          row.recommendations ||
+          row.recommendation ||
+          row.recommendations_filled ||
+          row.next_steps ||
+          ""
+        ).trim()
+      );
+
+      return !(completed && hasRecommendations);
+    })
+    .sort((a, b) => {
+      const aDate = parseMonthDayYear(a.call_date || "")?.getTime() ?? 0;
+      const bDate = parseMonthDayYear(b.call_date || "")?.getTime() ?? 0;
+      return bDate - aDate;
+    });
+
+  const attentionInquiries = activeInquiries
+    .filter(inquiryNeedsAttention)
+    .slice(0, 3);
 
   const callBuckets = safeData.calls.reduce(
     (acc, row) => {
@@ -1643,9 +1669,9 @@ export default function DashboardClient() {
                 </div>
               </div>
 
-              {safeData.calls.length ? (
+              {activeInquiries.length ? (
                 <div className="inquiry-list">
-                  {safeData.calls.slice(0, 6).map((row, i) => {
+                  {activeInquiries.slice(0, 8).map((row, i) => {
                     const colors = statusColor(row.status || "");
                     return (
                       <div key={i} className="inquiry-card">
@@ -1714,100 +1740,101 @@ export default function DashboardClient() {
                   })}
                 </div>
               ) : (
-                <div className="soft-note">No inquiries found.</div>
+                <div className="soft-note">No active inquiries found.</div>
               )}
             </section>
 
-            <div className="lower-grid">
-              <section className="card section-card">
-                <div className="section-heading">
-                  <div>
-                    <h2 className="section-title">Daily Productivity</h2>
-                    <p className="section-subtitle">Today’s therapist totals</p>
-                  </div>
-                </div>
-
-                {dailyRows.length ? (
-                  <>
-                    <div className="productivity-summary">
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Charges</div>
-                        <div className="productivity-stat-value">{formatMoney(dailyTotals.charges)}</div>
-                      </div>
-
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Visits</div>
-                        <div className="productivity-stat-value">{dailyTotals.visits}</div>
-                      </div>
-
-                      <div className="productivity-stat">
-                        <div className="productivity-stat-label">Duration</div>
-                        <div className="productivity-stat-value">{dailyTotals.duration}</div>
-                      </div>
-                    </div>
-
-                    <div className="productivity-list">
-                      {dailyRows.map((row, i) => (
-                        <div key={i} className="productivity-row">
-                          <div className="productivity-person">
-                            <div className="productivity-name">{row.therapist || "Unknown Therapist"}</div>
-                            <div className="productivity-meta">
-                              {[row.service, row.location].filter(Boolean).join(" • ")}
-                            </div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Duration</div>
-                            <div className="productivity-metric-value">{row.duration || "—"}</div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Charges</div>
-                            <div className="productivity-metric-value">
-                              {row.charges ? formatMoney(parseNumber(row.charges)) : "—"}
-                            </div>
-                          </div>
-
-                          <div className="productivity-metric">
-                            <div className="productivity-metric-label">Visits</div>
-                            <div className="productivity-metric-value">{row.visits || "—"}</div>
-                          </div>
-                        </div>
-                      ))}
-                    {showScrollTop && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            scrollToTop();
-          }}
-          style={{
-            position: "fixed",
-            bottom: 20,
-            right: 20,
-            zIndex: 50,
-            padding: "12px 16px",
-            borderRadius: 999,
-            border: "none",
-            background: "#111827",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 14,
-            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
-            cursor: "pointer",
-          }}
-        >
-          ↑ Top
-        </button>
-      )}
+            <section className="card section-card">
+  <div className="section-heading">
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+      <div>
+        <h2 className="section-title">Today’s Activity</h2>
+        <p className="section-subtitle">Therapist activity for today</p>
       </div>
-    </>
-                ) : (
-                  <div className="soft-note">No daily productivity data found.</div>
-                )}
-              </section>
 
+      <button
+        type="button"
+        onClick={() => setShowDaily(!showDaily)}
+        style={{
+          padding: "8px 12px",
+          borderRadius: 999,
+          border: "1px solid #e5e7eb",
+          background: "#f9fafb",
+          fontWeight: 600,
+          fontSize: 13,
+          cursor: "pointer",
+        }}
+      >
+        {showDaily ? "Hide" : "View"}
+      </button>
+    </div>
+  </div>
+
+  {!showDaily && (
+    <div style={{ fontSize: 14, color: "#6b7280", marginTop: 6 }}>
+      Tap “View” to see today’s therapist activity
+    </div>
+  )}
+
+  {showDaily && (
+    dailyRows.length ? (
+      <>
+        <div className="productivity-summary">
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Charges</div>
+            <div className="productivity-stat-value">
+              {formatMoney(dailyTotals.charges)}
+            </div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Visits</div>
+            <div className="productivity-stat-value">{dailyTotals.visits}</div>
+          </div>
+
+          <div className="productivity-stat">
+            <div className="productivity-stat-label">Duration</div>
+            <div className="productivity-stat-value">{dailyTotals.duration}</div>
+          </div>
+        </div>
+
+        <div className="productivity-list">
+          {dailyRows.map((row, i) => (
+            <div key={i} className="productivity-row">
+              <div className="productivity-person">
+                <div className="productivity-name">
+                  {row.therapist || "Unknown Therapist"}
+                </div>
+                <div className="productivity-meta">
+                  {[row.service, row.location].filter(Boolean).join(" • ")}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Duration</div>
+                <div className="productivity-metric-value">{row.duration || "—"}</div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Charges</div>
+                <div className="productivity-metric-value">
+                  {row.charges ? formatMoney(parseNumber(row.charges)) : "—"}
+                </div>
+              </div>
+
+              <div className="productivity-metric">
+                <div className="productivity-metric-label">Visits</div>
+                <div className="productivity-metric-value">{row.visits || "—"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    ) : (
+      <div className="soft-note">No daily productivity data found.</div>
+    )
+  )}
+</section>
               <section className="card section-card">
                 <div className="section-heading">
                   <div>
@@ -1902,7 +1929,6 @@ export default function DashboardClient() {
             </div>
           </div>
         </div>
-      </div>
     </>
   );
 }
