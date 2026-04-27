@@ -1431,7 +1431,7 @@ const collectionWindowText = `${nextMonthName} 1–10`;
                 color: "#0f172a",
               }}
             >
-              LKS Operations Dashboard
+              LKS and Associates
             </h1>
 
             <p style={{ marginTop: 14, color: "#64748b", fontSize: 24 }}>
