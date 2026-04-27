@@ -1448,6 +1448,9 @@ const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
             >
               LKS and Associates
             </h1>
+<div className="quick-bar">
+  TIN: 834027276 • Group NPI: 1356945307 • Fax: (310) 844-7602
+</div>
 
           
 
