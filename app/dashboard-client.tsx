@@ -497,7 +497,9 @@ const [showDaily, setShowDaily] = useState(false);
 
   const activeInquiries = safeData.calls
     .filter((row) => {
+      const status = normalizeStatus(row.status || "");
       const completed = isCompletedAssessment(row.status || "");
+      const declined = status.includes("declined");
       const hasRecommendations = Boolean(
         (
           row.recommendations ||
@@ -508,7 +510,7 @@ const [showDaily, setShowDaily] = useState(false);
         ).trim()
       );
 
-      return !(completed && hasRecommendations);
+      return !declined && !(completed && hasRecommendations);
     })
     .sort((a, b) => {
       const aDate = parseMonthDayYear(a.call_date || "")?.getTime() ?? 0;
@@ -774,6 +776,88 @@ const [showDaily, setShowDaily] = useState(false);
           color: #ffffff;
         }
 
+
+        .financial-overview-card {
+          padding: 22px;
+          background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+          color: #ffffff;
+          display: grid;
+          gap: 18px;
+          margin-bottom: 20px;
+        }
+
+        .financial-overview-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+        }
+
+        .financial-overview-subtitle {
+          margin-top: 6px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.7);
+        }
+
+        .financial-net-pill {
+          padding: 9px 12px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.16);
+          font-size: 13px;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .financial-overview-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .financial-stat.light {
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .financial-stat-note {
+          margin-top: 5px;
+          font-size: 11px;
+          line-height: 1.35;
+          color: rgba(255,255,255,0.62);
+        }
+
+        .upcoming-expenses-compact {
+          padding-top: 14px;
+          border-top: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .upcoming-expense-list {
+          display: grid;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .upcoming-expense-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          font-size: 14px;
+          color: rgba(255,255,255,0.88);
+        }
+
+        .upcoming-expense-row strong {
+          color: #ffffff;
+          white-space: nowrap;
+        }
+
+        .upcoming-expense-meta {
+          display: block;
+          margin-top: 2px;
+          font-size: 12px;
+          color: rgba(255,255,255,0.58);
+        }
+
         .strategy-card {
           padding: 22px;
           display: grid;
@@ -814,7 +898,7 @@ const [showDaily, setShowDaily] = useState(false);
 
         .kpi-row {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
           margin-bottom: 20px;
         }
@@ -1195,19 +1279,129 @@ const [showDaily, setShowDaily] = useState(false);
 
         @media (max-width: 760px) {
           .dashboard-shell {
-            padding: 18px;
+            padding: 12px;
           }
 
           .dashboard-header {
             align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 16px;
+          }
+
+          .logo-wrap {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+          }
+
+          .dashboard-header h1 {
+            font-size: 34px !important;
+            line-height: 0.95 !important;
+          }
+
+          .dashboard-header p {
+            font-size: 14px !important;
+            margin-top: 8px !important;
+          }
+
+          .financial-overview-card,
+          .section-card,
+          .strategy-card,
+          .financial-hero {
+            padding: 14px;
+            border-radius: 18px;
+          }
+
+          .financial-overview-card {
+            gap: 14px;
+          }
+
+          .financial-overview-header {
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          .financial-overview-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+          }
+
+          .financial-stat {
+            padding: 10px;
+            border-radius: 14px;
+          }
+
+          .financial-stat-value {
+            font-size: 18px;
+          }
+
+          .financial-net-pill {
+            width: fit-content;
           }
 
           .kpi-row {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+          }
+
+          .kpi-card {
+            min-height: 74px;
+            padding: 10px;
+            border-radius: 14px;
+          }
+
+          .kpi-label {
+            font-size: 9px;
+          }
+
+          .kpi-value {
+            font-size: 22px;
+          }
+
+          .section-title {
+            font-size: 20px;
+          }
+
+          .section-subtitle {
+            font-size: 12px;
+            margin-top: 3px;
+          }
+
+          .card {
+            border-radius: 18px;
+          }
+
+          .billing-item,
+          .employee-card,
+          .inquiry-card,
+          .productivity-row,
+          .capacity-card,
+          .task-card-modern,
+          .attention-row {
+            padding: 12px;
+            border-radius: 14px;
           }
 
           .inquiry-name {
-            font-size: 24px;
+            font-size: 20px;
+          }
+
+          .inquiry-grid {
+            gap: 6px;
+            font-size: 13px;
+          }
+
+          .status-pill {
+            padding: 6px 10px;
+            font-size: 11px;
+          }
+
+          .productivity-stat {
+            padding: 10px 12px;
+          }
+
+          .productivity-stat-value {
+            font-size: 20px;
           }
         }
       `}</style>
@@ -1242,82 +1436,94 @@ const [showDaily, setShowDaily] = useState(false);
           </div>
         </div>
 
-        <div className="hero-grid">
-          <section className="financial-hero card">
-            <div style={{ fontSize: 13, lineHeight: 1.45, color: "rgba(255,255,255,0.78)" }}>
-              Cash received this month may include payments for prior-month services.
-              Service-month collections below are currently estimated.
-            </div>
+        <section className="card financial-overview-card">
+          <div className="financial-overview-header">
             <div>
-              <div className="financial-hero-label">Cash Collected (MTD)</div>
+              <div className="financial-hero-label">Financial Overview</div>
               <div className="financial-hero-value">{formatMoney(cashCollectedMTD)}</div>
+              <div className="financial-overview-subtitle">Cash Collected MTD</div>
             </div>
 
-            <div className="financial-grid">
-              <div className="financial-stat">
-                <div className="financial-stat-label">Billed Services (MTD)</div>
-                <div className="financial-stat-value">{formatMoney(billedServicesMTD)}</div>
-              </div>
-
-              <div className="financial-stat">
-                <div className="financial-stat-label">Est. Remaining</div>
-                <div className="financial-stat-value">{formatMoney(remainingToCollect)}</div>
-              </div>
-
-              <div className="financial-stat">
-                <div className="financial-stat-label">Est. Collection Rate</div>
-                <div className="financial-stat-value">{collectionRate.toFixed(0)}%</div>
-              </div>
-
-              <div className="financial-stat">
-                <div className="financial-stat-label">Net Cash (MTD)</div>
-                <div className="financial-stat-value">{formatMoney(netMTD)}</div>
-              </div>
+            <div className="financial-net-pill">
+              Net Cash: {formatMoney(netMTD)}
             </div>
-          </section>
+          </div>
 
-          <section className="strategy-card card">
-            <div className="section-heading" style={{ marginBottom: 0 }}>
-              <div>
-                <h2 className="section-title">Financial Outlook</h2>
-                <p className="section-subtitle">
-                  Quick financial pacing and action-oriented visibility
-                </p>
-              </div>
+          <div className="financial-overview-grid">
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Billed Services</div>
+              <div className="financial-stat-value">{formatMoney(billedServicesMTD)}</div>
             </div>
 
-            <div className="strategy-item">
-              <div className="strategy-label">Cash Pace</div>
-              <div className="strategy-value">{formatMoney(currentPace)}/day</div>
-              <div className="strategy-note">
-                Based on collections through day {dayOfMonth} of {daysInMonth}
-              </div>
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Expenses</div>
+              <div className="financial-stat-value">{formatMoney(expensesMTD)}</div>
             </div>
 
-            <div className="strategy-item">
-              <div className="strategy-label">Projected Cash This Month</div>
-              <div className="strategy-value">
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Cash Pace</div>
+              <div className="financial-stat-value">{formatMoney(currentPace)}/day</div>
+              <div className="financial-stat-note">Day {dayOfMonth} of {daysInMonth}</div>
+            </div>
+
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Projected Month-End</div>
+              <div className="financial-stat-value">
                 {formatMoney(projectedMonthTotal || projectedCollections)}
               </div>
-              <div className="strategy-note">
-                {projectedMonthTotal > 0
-                  ? "Using dashboard-provided projected total"
-                  : "Projected from current collection pace"}
-              </div>
+            </div>
+          </div>
+
+          <div className="financial-overview-grid">
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Est. Remaining</div>
+              <div className="financial-stat-value">{formatMoney(remainingToCollect)}</div>
             </div>
 
-            <div className="strategy-item">
-              <div className="strategy-label">Remaining Billed Opportunity</div>
-              <div className="strategy-value">{formatMoney(gapToProjection)}</div>
-              <div className="strategy-note">
-                Based on billed services month-to-date, not true claim aging by service month
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Est. Collection Rate</div>
+              <div className="financial-stat-value">{collectionRate.toFixed(0)}%</div>
+            </div>
+
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Projected Gap</div>
+              <div className="financial-stat-value">{formatMoney(gapToProjection)}</div>
+            </div>
+
+            <div className="financial-stat light">
+              <div className="financial-stat-label">Source Note</div>
+              <div className="financial-stat-note">
+                Cash may include payments for prior-month services.
               </div>
             </div>
-          </section>
-        </div>
+          </div>
 
-        <div className="kpi-row">
-          <KpiCard label="Expenses (MTD)" value={formatMoney(expensesMTD)} accent="red" />
+          <div className="upcoming-expenses-compact">
+            <div className="financial-stat-label">Upcoming Expenses</div>
+
+            {upcomingExpenses.length ? (
+              <div className="upcoming-expense-list">
+                {upcomingExpenses.map((row, i) => (
+                  <div key={i} className="upcoming-expense-row">
+                    <span>
+                      {row.expense_name || "Expense"}
+                      <span className="upcoming-expense-meta">
+                        {[row.category, row.due_date].filter(Boolean).join(" • ")}
+                      </span>
+                    </span>
+                    <strong>{row.amount ? formatMoney(parseNumber(row.amount)) : "—"}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="soft-note" style={{ color: "rgba(255,255,255,0.62)" }}>
+                No upcoming expenses listed.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="kpi-row inquiry-kpi-row">
           <KpiCard label="New Inquiries (MTD)" value={String(callBuckets.newCount)} accent="blue" />
           <KpiCard label="Scheduled" value={String(callBuckets.scheduledCount)} accent="blue" />
           <KpiCard label="Completed" value={String(callBuckets.completedCount)} accent="green" />
@@ -1387,278 +1593,6 @@ const [showDaily, setShowDaily] = useState(false);
               </div>
             </section>
 
-            <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Financial Snapshot</h2>
-                  <p className="section-subtitle">
-                    Month-to-date collections, expenses, and upcoming obligations
-                  </p>
-                </div>
-              </div>
-
-              <div className="billing-stack">
-                <div className="billing-item">
-                  <div className="billing-item-label">Cash Collected (MTD)</div>
-                  <div className="billing-item-value">{formatMoney(cashCollectedMTD)}</div>
-                </div>
-
-                <div className="billing-item">
-                  <div className="billing-item-label">Billed Services (MTD)</div>
-                  <div className="billing-item-value">{formatMoney(billedServicesMTD)}</div>
-                </div>
-
-                <div className="billing-item">
-                  <div className="billing-item-label">Estimated Remaining for Current Service Month</div>
-                  <div className="billing-item-value">{formatMoney(remainingToCollect)}</div>
-                </div>
-
-                <div className="billing-item">
-                  <div className="billing-item-label">Expenses (MTD)</div>
-                  <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280", lineHeight: 1.4 }}>
-                    Cash collections shown above may include prior month services.
-                  </div>
-                  <div className="billing-item-value">{formatMoney(expensesMTD)}</div>
-                </div>
-
-                <div className="billing-item" style={{ background: "#fafafa" }}>
-                  <div className="billing-item-label" style={{ marginBottom: 10 }}>
-                    Upcoming Expenses
-                  </div>
-
-                  {upcomingExpenses.length ? (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {upcomingExpenses.map((row, i) => {
-                        const dueDate = parseMonthDayYear(row.due_date || "");
-                        const isSoon =
-                          dueDate && dueDate.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 5;
-
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              alignItems: "center",
-                              borderBottom:
-                                i !== upcomingExpenses.length - 1 ? "1px solid #e5e7eb" : "none",
-                              paddingBottom: i !== upcomingExpenses.length - 1 ? 10 : 0,
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: 700, color: "#111827" }}>
-                                {row.expense_name || "Expense"}
-                              </div>
-                              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-                                {[row.category, row.due_date].filter(Boolean).join(" • ")}
-                              </div>
-                            </div>
-
-                            <div
-                              style={{
-                                fontWeight: 800,
-                                color: isSoon ? "#b91c1c" : "#991b1b",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {row.amount ? formatMoney(parseNumber(row.amount)) : "—"}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="soft-note">No upcoming expenses listed.</div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Open Tasks</h2>
-                  <p className="section-subtitle">
-                    Current action items and recent completions
-                  </p>
-                </div>
-              </div>
-
-              <div className="tasks-section-stack">
-                <div className="tasks-subsection">
-                  <div className="tasks-subheading">Active Tasks</div>
-
-                  {openTasks.length ? (
-                    openTasks.map((row, i) => (
-                      <div key={i} className="task-card-modern">
-                        <div className="task-top-row">
-                          <div className="task-title-modern">{row.task || "Untitled task"}</div>
-                        </div>
-
-                        <div className="task-meta-row">
-                          {row.owner ? (
-                            <span className="task-chip owner">Owner: {row.owner}</span>
-                          ) : null}
-
-                          {formatTaskDue(row.due || "") ? (
-                            <span className="task-chip due">
-                              Due: {formatTaskDue(row.due || "")}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {getTaskNote(row) ? <div className="task-note">{getTaskNote(row)}</div> : null}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="soft-note">No active tasks found.</div>
-                  )}
-                </div>
-
-                <div className="tasks-subsection">
-                  <div className="tasks-subheading">Recently Completed</div>
-
-                  {completedTasks.length ? (
-                    <div className="completed-list">
-                      {completedTasks.slice(0, 4).map((row, i) => (
-                        <div key={i} className="completed-task-row">
-                          <div className="completed-task-main">
-                            <div className="completed-task-title">✓ {row.task || "Completed task"}</div>
-                            <div className="completed-task-meta">
-                              {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
-                                .filter(Boolean)
-                                .join(" • ")}
-                            </div>
-                          </div>
-
-                          <div className="completed-task-date">
-                            {row.completed_date || "Completed"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="soft-note">No completed tasks yet.</div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="card section-card">
-              <div className="section-heading">
-                <div>
-                  <h2 className="section-title">Team & Milestones</h2>
-                  <p className="section-subtitle">Upcoming celebrations and key dates</p>
-                </div>
-              </div>
-
-              {upcomingEmployeeEvents.length ? (
-                <div className="milestone-feature">
-                  <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
-
-                  <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-                    {upcomingEmployeeEvents.map((event, i) => (
-                      <div
-                        key={`${event.employee}-${event.type}-${i}`}
-                        style={{
-                          paddingBottom: i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
-                          borderBottom:
-                            i !== upcomingEmployeeEvents.length - 1 ? "1px solid #334155" : "none",
-                        }}
-                      >
-                        <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
-                          {event.employee}
-                        </div>
-
-                        <div style={{ marginTop: 2, fontSize: 14, color: "#cbd5e1" }}>
-                          {event.role}
-                        </div>
-
-                        <div style={{ marginTop: 8, fontSize: 15, fontWeight: 600, color: "#f8fafc" }}>
-                          {event.type === "birthday"
-                            ? `🧁 Birthday — ${event.label}`
-                            : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {safeData.employees.length ? (
-                <div className="employee-list">
-                  {safeData.employees.map((row, i) => {
-                    const years = getWorkAnniversaryYears(row.work_anniversary);
-
-                    return (
-                      <div key={i} className="employee-card">
-                        <div className="employee-name">{row.employee || "Unknown Employee"}</div>
-                        <div className="employee-role">{row.role || ""}</div>
-
-                        <div className="employee-tags">
-                          {row.birthday ? (
-                            <div
-                              className="tag"
-                              style={{
-                                background: "#e9a9bf",
-                                color: "#fff",
-                                padding: "10px 16px",
-                                borderRadius: 999,
-                                fontSize: 15,
-                                fontWeight: 700,
-                              }}
-                            >
-                              🧁 {formatMonthDayOnly(row.birthday)}
-                            </div>
-                          ) : null}
-
-                          {row.work_anniversary ? (
-                            <div
-                              className="tag"
-                              style={{
-                                background: "#f8fafc",
-                                border: ".5px solid #f1d5db",
-                                color: "#111827",
-                                padding: "10px 16px",
-                                borderRadius: 999,
-                                fontSize: 15,
-                                fontWeight: 500,
-                              }}
-                            >
-                              <span style={{ color: "#e9a9bf" }}>🎉</span>&nbsp;
-                              {formatAnniversaryFull(row.work_anniversary)} — {formatYearsLabel(years)}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        {row.license || row.npi ? (
-                          <div
-                            style={{
-                              marginTop: 16,
-                              fontSize: 15,
-                              color: "#111827",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {row.license ? <span>LICENSE: {row.license}</span> : null}
-                            {row.license && row.npi ? (
-                              <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
-                            ) : null}
-                            {row.npi ? <span>NPI: {row.npi}</span> : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="soft-note">No employee data found.</div>
-              )}
-            </section>
-          </div>
-
-          <div className="right-column">
             <section className="card section-card">
               <div className="section-heading">
                 <div>
@@ -1744,7 +1678,80 @@ const [showDaily, setShowDaily] = useState(false);
               )}
             </section>
 
-            <section className="card section-card">
+             <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Open Tasks</h2>
+                  <p className="section-subtitle">
+                    Current action items and recent completions
+                  </p>
+                </div>
+              </div>
+
+              <div className="tasks-section-stack">
+                <div className="tasks-subsection">
+                  <div className="tasks-subheading">Active Tasks</div>
+
+                  {openTasks.length ? (
+                    openTasks.map((row, i) => (
+                      <div key={i} className="task-card-modern">
+                        <div className="task-top-row">
+                          <div className="task-title-modern">{row.task || "Untitled task"}</div>
+                        </div>
+
+                        <div className="task-meta-row">
+                          {row.owner ? (
+                            <span className="task-chip owner">Owner: {row.owner}</span>
+                          ) : null}
+
+                          {formatTaskDue(row.due || "") ? (
+                            <span className="task-chip due">
+                              Due: {formatTaskDue(row.due || "")}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {getTaskNote(row) ? <div className="task-note">{getTaskNote(row)}</div> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="soft-note">No active tasks found.</div>
+                  )}
+                </div>
+
+                <div className="tasks-subsection">
+                  <div className="tasks-subheading">Recently Completed</div>
+
+                  {completedTasks.length ? (
+                    <div className="completed-list">
+                      {completedTasks.slice(0, 4).map((row, i) => (
+                        <div key={i} className="completed-task-row">
+                          <div className="completed-task-main">
+                            <div className="completed-task-title">✓ {row.task || "Completed task"}</div>
+                            <div className="completed-task-meta">
+                              {[row.owner ? `Owner: ${row.owner}` : "", getTaskNote(row)]
+                                .filter(Boolean)
+                                .join(" • ")}
+                            </div>
+                          </div>
+
+                          <div className="completed-task-date">
+                            {row.completed_date || "Completed"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="soft-note">No completed tasks yet.</div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          <div className="right-column">
+           <section className="card section-card">
   <div className="section-heading">
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
       <div>
@@ -1897,6 +1904,117 @@ const [showDaily, setShowDaily] = useState(false);
                 )}
               </section>
 
+            <section className="card section-card">
+              <div className="section-heading">
+                <div>
+                  <h2 className="section-title">Team & Milestones</h2>
+                  <p className="section-subtitle">Upcoming celebrations and key dates</p>
+                </div>
+              </div>
+
+              {upcomingEmployeeEvents.length ? (
+                <div className="milestone-feature">
+                  <div className="milestone-feature-label">Upcoming (Next 45 Days)</div>
+
+                  <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                    {upcomingEmployeeEvents.map((event, i) => (
+                      <div
+                        key={`${event.employee}-${event.type}-${i}`}
+                        style={{
+                          paddingBottom: i !== upcomingEmployeeEvents.length - 1 ? 12 : 0,
+                          borderBottom:
+                            i !== upcomingEmployeeEvents.length - 1 ? "1px solid #334155" : "none",
+                        }}
+                      >
+                        <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                          {event.employee}
+                        </div>
+
+                        <div style={{ marginTop: 2, fontSize: 14, color: "#cbd5e1" }}>
+                          {event.role}
+                        </div>
+
+                        <div style={{ marginTop: 8, fontSize: 15, fontWeight: 600, color: "#f8fafc" }}>
+                          {event.type === "birthday"
+                            ? `🧁 Birthday — ${event.label}`
+                            : `🎉 ${event.years ?? 0} Year Anniversary — ${event.label}`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {safeData.employees.length ? (
+                <div className="employee-list">
+                  {safeData.employees.map((row, i) => {
+                    const years = getWorkAnniversaryYears(row.work_anniversary);
+
+                    return (
+                      <div key={i} className="employee-card">
+                        <div className="employee-name">{row.employee || "Unknown Employee"}</div>
+                        <div className="employee-role">{row.role || ""}</div>
+
+                        <div className="employee-tags">
+                          {row.birthday ? (
+                            <div
+                              className="tag"
+                              style={{
+                                background: "#e9a9bf",
+                                color: "#fff",
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                fontSize: 15,
+                                fontWeight: 700,
+                              }}
+                            >
+                              🧁 {formatMonthDayOnly(row.birthday)}
+                            </div>
+                          ) : null}
+
+                          {row.work_anniversary ? (
+                            <div
+                              className="tag"
+                              style={{
+                                background: "#f8fafc",
+                                border: ".5px solid #f1d5db",
+                                color: "#111827",
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              <span style={{ color: "#e9a9bf" }}>🎉</span>&nbsp;
+                              {formatAnniversaryFull(row.work_anniversary)} — {formatYearsLabel(years)}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {row.license || row.npi ? (
+                          <div
+                            style={{
+                              marginTop: 16,
+                              fontSize: 15,
+                              color: "#111827",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {row.license ? <span>LICENSE: {row.license}</span> : null}
+                            {row.license && row.npi ? (
+                              <span style={{ color: "#e9a9bf", margin: "0 8px" }}>•</span>
+                            ) : null}
+                            {row.npi ? <span>NPI: {row.npi}</span> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="soft-note">No employee data found.</div>
+              )}
+            </section>
               <section className="card section-card" style={{ gridColumn: "1 / -1" }}>
                 <div className="section-heading">
                   <div>
