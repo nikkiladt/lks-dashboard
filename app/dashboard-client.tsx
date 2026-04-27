@@ -841,6 +841,11 @@ const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
           line-height: 1.35;
           color: rgba(255,255,255,0.62);
         }
+.upcoming-expense-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.62);
+}
 
         .upcoming-expenses-compact {
           padding-top: 14px;
@@ -1516,28 +1521,29 @@ const upcomingExpenses = allUpcomingExpenses.slice(0, 5);
           </div>
 
           <div className="upcoming-expenses-compact">
-            <div className="financial-stat-label">Upcoming Expenses</div>
+  <div className="financial-stat-label">Upcoming Bills</div>
 
-            {upcomingExpenses.length ? (
-              <div className="upcoming-expense-list">
-                {upcomingExpenses.map((row, i) => (
-                  <div key={i} className="upcoming-expense-row">
-                    <span>
-                      {row.expense_name || "Expense"}
-                      <span className="upcoming-expense-meta">
-                        {[row.category, row.due_date].filter(Boolean).join(" • ")}
-                      </span>
-                    </span>
-                    <strong>{row.amount ? formatMoney(parseNumber(row.amount)) : "—"}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="soft-note" style={{ color: "rgba(255,255,255,0.62)" }}>
-                No upcoming expenses listed.
-              </div>
-            )}
+  {upcomingExpenses.length ? (
+    <div className="upcoming-expense-list">
+      {upcomingExpenses.map((row, i) => (
+        <div key={i} className="upcoming-expense-row">
+          <div>
+            <span>{row.expense_name || "Expense"}</span>
+            <div className="upcoming-expense-meta">
+              {[row.category, row.due_date].filter(Boolean).join(" • ")}
+            </div>
           </div>
+
+          <strong>
+            {row.amount ? formatMoney(parseNumber(row.amount)) : "—"}
+          </strong>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="soft-note">No upcoming expenses listed.</div>
+  )}
+</div>
         </section>
 
         <div className="kpi-row inquiry-kpi-row">
