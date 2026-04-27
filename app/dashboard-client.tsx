@@ -567,16 +567,18 @@ const [showDaily, setShowDaily] = useState(false);
     billedServicesMTD - collectedForCurrentServiceMonth,
     0
   );
-  const collectionRate =
-    billedServicesMTD > 0
-      ? (collectedForCurrentServiceMonth / billedServicesMTD) * 100
-      : 0;
+  
 
   const expensesMTD = sumExpensesMTD(safeData.expenses || []);
   const netMTD = cashCollectedMTD - expensesMTD;
 
   const now = new Date();
   const dayOfMonth = now.getDate();
+const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+const nextMonthName = nextMonthDate.toLocaleString("en-US", {
+  month: "long",
+});
+const collectionWindowText = `${nextMonthName} 1–10`;
   const daysInMonth = getDaysInMonth(now);
   const currentPace = dayOfMonth > 0 ? cashCollectedMTD / dayOfMonth : 0;
   const projectedCollections = currentPace * daysInMonth;
@@ -637,6 +639,12 @@ const [showDaily, setShowDaily] = useState(false);
           min-height: 100vh;
           color: #111827;
         }
+.financial-stat-note {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.68);
+}
 
         .dashboard-header {
           display: flex;
@@ -1472,18 +1480,16 @@ const [showDaily, setShowDaily] = useState(false);
                 {formatMoney(projectedMonthTotal || projectedCollections)}
               </div>
             </div>
-          </div>
 
-          <div className="financial-overview-grid">
-            <div className="financial-stat light">
-              <div className="financial-stat-label">Est. Remaining</div>
-              <div className="financial-stat-value">{formatMoney(remainingToCollect)}</div>
-            </div>
+          
 
             <div className="financial-stat light">
-              <div className="financial-stat-label">Est. Collection Rate</div>
-              <div className="financial-stat-value">{collectionRate.toFixed(0)}%</div>
-            </div>
+  <div className="financial-stat-label">Outstanding Current Month Services</div>
+  <div className="financial-stat-value">{formatMoney(remainingToCollect)}</div>
+  <div className="financial-stat-note">
+    Expected collection: {collectionWindowText}
+  </div>
+</div>
 
             <div className="financial-stat light">
               <div className="financial-stat-label">Projected Gap</div>
@@ -1545,9 +1551,9 @@ const [showDaily, setShowDaily] = useState(false);
                 {remainingToCollect > 0 ? (
                   <div className="attention-row">
                     <div className="attention-main">
-                      <div className="attention-title">Current service month still has estimated collection remaining</div>
+                      <div className="attention-title">Current month services still have expected collections pending</div>
                       <div className="attention-meta">
-                        {formatMoney(remainingToCollect)} estimated remaining based on billed services month-to-date
+                        {formatMoney(remainingToCollect)} expected during the {collectionWindowText} billing window
                       </div>
                     </div>
                     <div className="attention-badge">Revenue</div>
